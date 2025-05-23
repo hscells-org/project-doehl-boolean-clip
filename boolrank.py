@@ -7,6 +7,7 @@ from safetensors.torch import load_file
 import random
 from datasets import Dataset
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -17,6 +18,8 @@ class DualSiglip2Model(nn.Module):
         self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
         self.encoder_text = deepcopy(self.encoder_bool)
         self.bias = nn.Parameter(torch.zeros(1))
+        # for stronger extremes
+        self.logit_scale = nn.Parameter(torch.ones(1))
         self.to(device)
 
     def tokenize(self, texts):
@@ -31,7 +34,7 @@ class DualSiglip2Model(nn.Module):
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
         loss = self.loss(out_bool, out_text)
-        logits = out_bool @ out_text.t() + self.bias
+        logits = out_bool @ out_text.t() * self.logit_scale.clamp(1, 100).exp() + self.bias
         return {"loss": loss, "logits": logits}
 
     def loss(self, emb_a, emb_b):
@@ -48,21 +51,21 @@ class DualSiglip2Model(nn.Module):
         self.load_state_dict(state_dict, strict=False)
         return self
 
-    def evaluate(self, in_bool, in_text, plot=False):
+    def evaluate(self, in_bool, in_text, plot=False, threshold=0.5):
         self.eval()
         with torch.no_grad():
             outputs = self(in_bool, in_text)
             logits = outputs["logits"]
             probs = torch.sigmoid(logits)
 
-        mask = torch.diag(torch.ones(probs.size(0), device=probs.device)).bool()
+        mask = torch.eye(probs.size(0), device=probs.device).bool()
         probs_pos = probs[mask]
         probs_neg = probs[~mask]
 
-        for name, p in zip(["Positive", "Negative"], [probs_pos, probs_neg]):
-            mean = p.mean().item()
-            std = p.std().item()
-            if plot:
+        if plot:
+            for name, p in zip(["Positive", "Negative"], [probs_pos, probs_neg]):
+                mean = p.mean().item()
+                std = p.std().item()
                 plt.hist(p.cpu().numpy().flatten(), bins=50, range=(0, 1), alpha=0.7, color='skyblue')
                 plt.axvline(mean, color='red', linestyle='dashed', linewidth=2, label=f"Mean: {mean:.2f}")
                 plt.title(f"{name} Score Distribution")
@@ -70,9 +73,25 @@ class DualSiglip2Model(nn.Module):
                 plt.ylabel("Frequency")
                 plt.legend()
                 plt.show()
-            print(f"{name} mean: {mean:.4f} ± {std:.4f}")
+                print(f"{name} mean: {mean:.4f} ± {std:.4f}")
+            y_true = torch.cat([
+                torch.ones_like(probs_pos),
+                torch.zeros_like(probs_neg)
+            ]).cpu().numpy()
+
+            y_pred = torch.cat([
+                probs_pos,
+                probs_neg
+            ]).cpu().numpy() > threshold
+
+            cm = confusion_matrix(y_true, y_pred)
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Negative", "Positive"])
+            disp.plot(cmap='Blues')
+            plt.title("Confusion Matrix")
+            plt.show()
 
         return probs.cpu().numpy()
+
 
 
 class RandomAccessMismatchedPairs:
