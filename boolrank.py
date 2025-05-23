@@ -84,7 +84,7 @@ class DualSiglip2Model(nn.Module):
                 probs_neg
             ]).cpu().numpy() > threshold
 
-            cm = confusion_matrix(y_true, y_pred)
+            cm = confusion_matrix(y_true, y_pred, normalize='true')
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Negative", "Positive"])
             disp.plot(cmap='Blues')
             plt.title("Confusion Matrix")
