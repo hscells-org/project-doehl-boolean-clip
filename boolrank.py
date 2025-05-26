@@ -18,23 +18,21 @@ class DualSiglip2Model(nn.Module):
         self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
         self.encoder_text = deepcopy(self.encoder_bool)
         self.bias = nn.Parameter(torch.zeros(1))
-        # for stronger extremes
-        self.logit_scale = nn.Parameter(torch.ones(1))
         self.to(device)
 
     def tokenize(self, texts):
         return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt", max_length=64).to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
-    def forward(self, in_bool, in_text):
+    def forward(self, in_bool, in_text, loss=True):
         tok_bool = self.tokenize(in_bool)
         tok_text = self.tokenize(in_text)
         out_bool = self.encoder_bool(**tok_bool).pooler_output
         out_text = self.encoder_text(**tok_text).pooler_output
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
-        loss = self.loss(out_bool, out_text)
-        logits = out_bool @ out_text.t() * self.logit_scale.clamp(1, 100).exp() + self.bias
+        loss = self.loss(out_bool, out_text) if loss else None
+        logits = out_bool @ out_text.t()# + self.bias
         return {"loss": loss, "logits": logits}
 
     def loss(self, emb_a, emb_b):
@@ -51,12 +49,14 @@ class DualSiglip2Model(nn.Module):
         self.load_state_dict(state_dict, strict=False)
         return self
 
+    def preprocess(self, in_bool, in_text):
+        pass #TODO
+
     def evaluate(self, in_bool, in_text, plot=False, threshold=0.5):
         self.eval()
         with torch.no_grad():
-            outputs = self(in_bool, in_text)
-            logits = outputs["logits"]
-            probs = torch.sigmoid(logits)
+            outputs = self(in_bool, in_text, loss=False)
+            probs = (outputs["logits"] + 1) / 2
 
         mask = torch.eye(probs.size(0), device=probs.device).bool()
         probs_pos = probs[mask]
@@ -66,7 +66,7 @@ class DualSiglip2Model(nn.Module):
             for name, p in zip(["Positive", "Negative"], [probs_pos, probs_neg]):
                 mean = p.mean().item()
                 std = p.std().item()
-                plt.hist(p.cpu().numpy().flatten(), bins=50, range=(0, 1), alpha=0.7, color='skyblue')
+                plt.hist(p.cpu().numpy().flatten(), bins=50, range=(0, 1), alpha=0.7, color='skyblue', density=True)
                 plt.axvline(mean, color='red', linestyle='dashed', linewidth=2, label=f"Mean: {mean:.2f}")
                 plt.title(f"{name} Score Distribution")
                 plt.xlabel("Score")
