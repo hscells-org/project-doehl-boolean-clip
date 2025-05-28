@@ -8,6 +8,8 @@ import random
 from datasets import Dataset
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import numpy as np
+from tabulate import tabulate
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -52,21 +54,34 @@ class DualSiglip2Model(nn.Module):
     def preprocess(self, in_bool, in_text):
         pass #TODO
 
-    def evaluate(self, in_bool, in_text, plot=False, threshold=0.5):
+    def evaluate(self, in_bool, in_text, plot=False, threshold=0.5, density=True, in_top_k=10):
         self.eval()
         with torch.no_grad():
             outputs = self(in_bool, in_text, loss=False)
-            probs = (outputs["logits"] + 1) / 2
+            probs: torch.Tensor = (outputs["logits"] + 1) / 2
+
+        top_idxs = probs.argsort(descending=True)
+        true_idxs = torch.arange(0, probs.size(0), device=probs.device).unsqueeze(1)
+        true_rank = (top_idxs == true_idxs).argsort(descending=True)[:, 0]
+        print(f"{'Top-K':>10} | {'Top-K(perc)':>10} | {'Recall@K':>10}")
+        for i in range(int(np.log2(probs.size(0)) + 1)):
+            k = 2**i
+            recall = (true_rank < k).float().mean().item()
+            print(f"{k:>10} | {k/probs.size(0):>10.2f} | {recall:10.2f}")
+        mean_rank = true_rank.float().mean()
+        median_rank = true_rank.float().median()
+        print(f"Location from top (of True), Mean: {mean_rank:.1f} / {mean_rank/probs.size(0):.2f}, Median: {median_rank:.0f} / {median_rank/probs.size(0):.2f}")
 
         mask = torch.eye(probs.size(0), device=probs.device).bool()
         probs_pos = probs[mask]
         probs_neg = probs[~mask]
 
         if plot:
-            for name, p in zip(["Positive", "Negative"], [probs_pos, probs_neg]):
-                mean = p.mean().item()
-                std = p.std().item()
-                plt.hist(p.cpu().numpy().flatten(), bins=50, range=(0, 1), alpha=0.7, color='skyblue', density=True)
+            for name, top_idxs in zip(["Positive", "Negative"], [probs_pos, probs_neg]):
+                mean = top_idxs.mean().item()
+                std = top_idxs.std().item()
+                d = top_idxs.cpu().numpy().flatten()
+                plt.hist(d, bins=50, range=(0, 1), alpha=0.7, color='skyblue', density=density)
                 plt.axvline(mean, color='red', linestyle='dashed', linewidth=2, label=f"Mean: {mean:.2f}")
                 plt.title(f"{name} Score Distribution")
                 plt.xlabel("Score")
