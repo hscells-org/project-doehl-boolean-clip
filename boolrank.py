@@ -13,6 +13,7 @@ from tabulate import tabulate
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 class DualSiglip2Model(nn.Module):
     def __init__(self, model_name="google/siglip2-base-patch16-224"):
         super().__init__()
@@ -34,7 +35,7 @@ class DualSiglip2Model(nn.Module):
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
         loss = self.loss(out_bool, out_text) if loss else None
-        logits = out_bool @ out_text.t()# + self.bias
+        logits = out_bool @ out_text.t()  # + self.bias
         return {"loss": loss, "logits": logits}
 
     def loss(self, emb_a, emb_b):
@@ -52,11 +53,9 @@ class DualSiglip2Model(nn.Module):
         return self
 
     def preprocess(self, in_bool, in_text):
-        pass #TODO
+        pass  # TODO
 
-
-    def evaluate(self, in_bool, in_text, plot=False, threshold=0.5, density=True, in_top_k=10):
-        # Switch to evaluation mode
+    def evaluate(self, in_bool, in_text, plot=False, threshold=0.5, density=True):
         self.eval()
         with torch.no_grad():
             outputs = self(in_bool, in_text, loss=False)
@@ -88,7 +87,7 @@ class DualSiglip2Model(nn.Module):
             d_pos = probs_pos.cpu().numpy().flatten()
             ax.hist(d_pos, bins=50, range=(0, 1), alpha=0.7, density=density)
             ax.axvline(d_pos.mean(), color='red', linestyle='dashed', linewidth=2, label=f"Mean: {d_pos.mean():.2f}")
-            ax.set_title("Positive Score Distribution")
+            ax.set_title("Positive Score Distribution (higher = better)")
             ax.set_xlabel("Score")
             ax.set_ylabel("Frequency")
             ax.legend()
@@ -98,7 +97,7 @@ class DualSiglip2Model(nn.Module):
             d_neg = probs_neg.cpu().numpy().flatten()
             ax.hist(d_neg, bins=50, range=(0, 1), alpha=0.7, density=density)
             ax.axvline(d_neg.mean(), color='red', linestyle='dashed', linewidth=2, label=f"Mean: {d_neg.mean():.2f}")
-            ax.set_title("Negative Score Distribution")
+            ax.set_title("Negative Score Distribution (lower = better)")
             ax.set_xlabel("Score")
             ax.legend()
 
@@ -106,7 +105,7 @@ class DualSiglip2Model(nn.Module):
             ax = axes[1, 0]
             ranks = true_rank.float().cpu().numpy()
             ax.boxplot(ranks, vert=True, patch_artist=True)
-            ax.set_title("True Rank Boxplot")
+            ax.set_title("True Rank Boxplot (lower = better)")
             ax.set_ylabel("Rank")
             ax.invert_yaxis()
 
@@ -122,7 +121,6 @@ class DualSiglip2Model(nn.Module):
             plt.show()
 
         return probs.cpu().numpy()
-
 
 
 class RandomAccessMismatchedPairs:
