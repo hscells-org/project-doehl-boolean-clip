@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, f1_score
+import matplotlib.axes._axes as axes
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 class ModelEvaluator:
     def __init__(self, model):
@@ -27,41 +28,54 @@ class ModelEvaluator:
             recall = (true_rank < k).float().mean().item()
             print(f"{k:>10} | {k/N:>10.2f} | {recall:10.2f}")
 
+    # maximize the score of true positives and true negatives
     def _search_threshold(self, y_true, y_scores, n_thresholds=100):
-        best_thresh, best_f1 = 0.0, -1.0
+        best_thresh, best_score = 0.0, -1.0
+        y_true = y_true.astype(bool)
+        true_count = y_true.sum()
+        neg_count = (~y_true).sum()
         for t in np.linspace(0, 1, n_thresholds):
-            preds = (y_scores >= t).astype(int)
-            score = f1_score(y_true, preds)
-            if score > best_f1:
-                best_f1, best_thresh = score, t
-        return best_thresh, best_f1
+            preds = (y_scores >= t)
+            pos_score = (y_true & preds).astype(float).sum()
+            neg_score = (~y_true & ~preds).astype(float).sum()
+            score = pos_score / true_count + neg_score / neg_count
+            if score > best_score:
+                best_score, best_thresh = score, t
+        return best_thresh
 
     def _plot(self, probs_pos, probs_neg, true_rank, threshold, density):
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        bins = 50
+
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        d_pos = probs_pos.cpu().numpy().flatten()
+        d_neg = probs_neg.cpu().numpy().flatten()
+        pos_height = np.histogram(d_pos, bins=bins, range=(0,1))[0].max() / d_pos.size
+        neg_height = np.histogram(d_neg, bins=bins, range=(0,1))[0].max() / d_neg.size
+        ymax = max(pos_height, neg_height) * bins * 1.05
 
         # Positive histogram
-        d_pos = probs_pos.cpu().numpy().flatten()
-        ax = axes[0, 0]
-        ax.hist(d_pos, bins=50, range=(0,1), alpha=0.7, density=density)
+        ax: axes = axs[0, 0]
+        ax.hist(d_pos, bins=bins, range=(0,1), alpha=0.7, density=density)
         ax.axvline(d_pos.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_pos.mean():.2f}")
         ax.set_title("Positive Score Distribution (higher = better)")
         ax.set_xlabel("Score")
         ax.set_ylabel("Frequency")
+        ax.set_ylim((0, ymax))
         ax.legend()
 
         # Negative histogram
-        d_neg = probs_neg.cpu().numpy().flatten()
-        ax = axes[0, 1]
-        ax.hist(d_neg, bins=50, range=(0,1), alpha=0.7, density=density)
+        ax = axs[0, 1]
+        ax.hist(d_neg, bins=bins, range=(0,1), alpha=0.7, density=density)
         ax.axvline(d_neg.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_neg.mean():.2f}")
         ax.set_title("Negative Score Distribution (lower = better)")
         ax.set_xlabel("Score")
+        ax.set_ylim((0, ymax))
         ax.legend()
 
         # Boxplot true ranks
-        ax = axes[1, 0]
+        ax = axs[1, 0]
         ranks = true_rank.float().cpu().numpy()
         ax.boxplot(ranks, vert=True, patch_artist=True)
         ax.set_ylim((0, probs_pos.size(0)))
@@ -74,8 +88,8 @@ class ModelEvaluator:
         y_pred = np.concatenate([d_pos, d_neg]) > threshold
         cm = confusion_matrix(y_true, y_pred, normalize='true')
         disp = ConfusionMatrixDisplay(cm, display_labels=["Negative", "Positive"])
-        disp.plot(ax=axes[1,1], cmap='Blues')
-        axes[1,1].set_title(f"Confusion Matrix (threshold={threshold:.2f})")
+        disp.plot(ax=axs[1,1], cmap='Blues')
+        axs[1,1].set_title(f"Confusion Matrix (threshold={threshold:.2f})")
 
         plt.tight_layout()
         plt.show()
@@ -97,8 +111,7 @@ class ModelEvaluator:
 
         # threshold
         if threshold_search:
-            best_thresh, best_f1 = self._search_threshold(y_true, y_scores, n_thresholds)
-            print(f"Best threshold by F1: {best_thresh:.3f} (F1={best_f1:.3f})")
+            best_thresh = self._search_threshold(y_true, y_scores, n_thresholds)
         else:
             best_thresh = threshold if threshold is not None else 0.5
 
