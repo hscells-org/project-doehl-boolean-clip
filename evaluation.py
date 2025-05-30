@@ -21,12 +21,13 @@ class ModelEvaluator:
         true_rank = (top_idxs == true_idxs).argsort(descending=True)[:, 0]
         return true_rank
 
-    def _print_recall_at_k(self, true_rank, N):
-        print(f"{'Top-K':>10} | {'Top-K(perc)':>10} | {'Recall@K':>10}")
+    def _recall_at_k(self, true_rank, N):
+        tab = f"{'Top-K':>10} | {'Top-K(perc)':>10} | {'Recall@K':>10}\n"
         for i in range(int(np.log2(N)) + 1):
             k = 2**i
             recall = (true_rank < k).float().mean().item()
-            print(f"{k:>10} | {k/N:>10.2f} | {recall:10.2f}")
+            tab += f"{k:>10} | {k/N:>10.2f} | {recall:10.2f}\n"
+        return tab
 
     # maximize the score of true positives and true negatives
     def _search_threshold(self, y_true, y_scores, n_thresholds=100):
@@ -43,7 +44,7 @@ class ModelEvaluator:
                 best_score, best_thresh = score, t
         return best_thresh
 
-    def _plot(self, probs_pos, probs_neg, true_rank, threshold, density):
+    def _get_plot(self, probs_pos, probs_neg, true_rank, threshold, density):
         bins = 50
 
         fig, axs = plt.subplots(2, 2, figsize=(10, 8))
@@ -92,7 +93,7 @@ class ModelEvaluator:
         axs[1,1].set_title(f"Confusion Matrix (threshold={threshold:.2f})")
 
         plt.tight_layout()
-        plt.show()
+        return fig
 
     def evaluate(self, in_bool, in_text, plot=False, threshold=None, density=True, n_thresholds=100, threshold_search=True):
         probs = self._get_probs(in_bool, in_text)
@@ -100,7 +101,8 @@ class ModelEvaluator:
 
         # ranks
         true_rank = self._compute_true_ranks(probs)
-        self._print_recall_at_k(true_rank, N)
+        rec = self._recall_at_k(true_rank, N)
+        print(rec)
 
         # flatten for thresholding
         mask = torch.eye(N, device=probs.device).bool()
@@ -116,10 +118,12 @@ class ModelEvaluator:
             best_thresh = threshold if threshold is not None else 0.5
 
         # plot diagnostics
-        if plot:
-            self._plot(probs_pos, probs_neg, true_rank, best_thresh, density)
+        fig = self._get_plot(probs_pos, probs_neg, true_rank, best_thresh, density)
+        if plot: plt.show()
 
         return {
             'probs': probs.cpu().numpy(),
             'best_threshold': best_thresh,
+            'rec_log': rec,
+            'plot': fig,
         }
