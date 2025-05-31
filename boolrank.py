@@ -4,11 +4,6 @@ import torch.nn.functional as F
 from copy import deepcopy
 from transformers import AutoTokenizer, Siglip2TextModel
 from safetensors.torch import load_file
-import random
-from datasets import Dataset
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

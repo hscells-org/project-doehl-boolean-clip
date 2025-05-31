@@ -5,8 +5,7 @@ from itertools import chain
 from tqdm import tqdm
 from Bio import Entrez
 
-Entrez.email = "XXX"
-
+Entrez.email = "simon.doehl@student.uni-tuebingen.de"
 
 def process_searchrefiner_logs():
     def read_logs(name):
@@ -20,9 +19,9 @@ def process_searchrefiner_logs():
             for m in missing:
                 if m in x["pmids"]:
                     x["pmids"].remove(m)
-            quality = "medium quality: "
+            quality = "medium"
             if x["num_ret"] == 0 or x["num_ret"] > 1_000_000:
-                quality = "low quality: "
+                quality = "low"
             if len(x["pmids"]) == 0:
                 continue
             yield {
@@ -42,7 +41,7 @@ def process_searchrefiner_logs():
         item["d"] = record["Title"]
         # Maybe do something here with the quality?
         del item["pmid"]
-        del item["quality"]
+        # del item["quality"]
         l.append(item)
     return l
 
@@ -65,21 +64,23 @@ if __name__ == "__main__":
 
     with open("data/pubmed-queries.short", "r") as f:
         Q = []
+        pmids = []
         for line in tqdm(f, desc="getting pmids"):
             handle = Entrez.esearch(db="pubmed", retmax=1, term=line)
             record = Entrez.read(handle)
             handle.close()
             if int(record["Count"]) > 0:
                 pmid = record["IdList"][0]
+                pmids.append(pmid)
                 Q.append((line, pmid))
 
         # Some example code that should get the titles for each PMID.
         # Commented out because it will be pretty slow, likely.
-        # handle = Entrez.esummary(db="pubmed", id=",".join(pmids))
-        # records = list(Entrez.parse(handle))
-        # with open("data/pubmed-queries.jsonl", "w") as f:
-        #     for pmid in tqdm(Q, desc="getting pmid titles"):
-        #         f.write(json.dumps)
+        handle = Entrez.esummary(db="pubmed", id=",".join(pmids))
+        records = list(Entrez.parse(handle))
+        with open("data/pubmed-queries.jsonl", "w") as f:
+            for pmid in tqdm(Q, desc="getting pmid titles"):
+                f.write(json.dumps)
 
     with open("data/raw.jsonl", "r") as f:
         x = []
