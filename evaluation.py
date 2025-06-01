@@ -99,7 +99,8 @@ class ModelEvaluator:
         # plt.xscale("log", base=2)
         ax.set_xlabel("Top-K")
         ax.set_ylabel("Recall@K")
-        ax.set_title("Recall@K Curve")
+        at1 = df.at[0, "Recall@K"]
+        ax.set_title(f"Recall@K Curve ({at1:.2f}@K=1)")
         ax.grid(True, which="both", ls="--", alpha=0.5)
 
         # Confusion matrix

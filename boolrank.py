@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
-from transformers import AutoTokenizer, Siglip2TextModel, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, Siglip2TextModel
+from transformers import AutoModel
 from safetensors.torch import load_file
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -13,11 +14,10 @@ class DualSiglip2Model(nn.Module):
         super().__init__()
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
-        # if "siglip" in model_name:
-        #     self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
-        # else:
-        #     self.encoder_bool = AutoModelForSequenceClassification.from_pretrained(model_name)
+        if "siglip" in model_name:
+            self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
+        else:
+            self.encoder_bool = AutoModel.from_pretrained(model_name)
         self.encoder_text = deepcopy(self.encoder_bool)
         self.bias = nn.Parameter(torch.zeros(1))
         self.to(device)
@@ -33,12 +33,12 @@ class DualSiglip2Model(nn.Module):
         out_text = self.encoder_text(**tok_text).pooler_output
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
-        loss = self.loss(out_bool, out_text) if loss else None
         logits = out_bool @ out_text.t()  # + self.bias
+        loss = self.loss(logits) if loss else None
         return {"loss": loss, "logits": logits}
 
-    def loss(self, emb_a, emb_b):
-        sim = emb_a @ emb_b.t() + self.bias
+    def loss(self, logits):
+        sim = logits + self.bias
         eye = torch.eye(sim.size(0), device=sim.device)
         y = -torch.ones_like(sim) + 2 * eye
         loglik = F.logsigmoid(y * sim)
