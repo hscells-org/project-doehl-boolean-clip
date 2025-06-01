@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.axes._axes as axes
+import pandas as pd
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 class ModelEvaluator:
@@ -21,13 +22,20 @@ class ModelEvaluator:
         true_rank = (top_idxs == true_idxs).argsort(descending=True)[:, 0]
         return true_rank
 
-    def _recall_at_k(self, true_rank, N):
-        tab = f"{'Top-K':>10} | {'Top-K(perc)':>10} | {'Recall@K':>10}\n"
-        for i in range(int(np.log2(N)) + 1):
+    def recall_at_ks(self, true_rank: np.ndarray, N: int):
+        ks, percents, recalls = [], [], []
+        max_pow = int(np.log2(N))
+        for i in range(max_pow + 1):
             k = 2**i
-            recall = (true_rank < k).float().mean().item()
-            tab += f"{k:>10} | {k/N:>10.2f} | {recall:10.2f}\n"
-        return tab
+            ks.append(k)
+            percents.append(k / N)
+            recalls.append((true_rank < k).cpu().float().mean())
+        df = pd.DataFrame({
+            "K": ks,
+            "K_percent": percents,
+            "Recall@K": recalls
+        })
+        return df
 
     # maximize the score of true positives and true negatives
     def _search_threshold(self, y_true, y_scores, n_thresholds=100):
@@ -47,7 +55,7 @@ class ModelEvaluator:
     def _get_plot(self, probs_pos, probs_neg, true_rank, threshold, density):
         bins = 50
 
-        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        fig, axs = plt.subplots(3, 2, figsize=(10, 12))
         d_pos = probs_pos.cpu().numpy().flatten()
         d_neg = probs_neg.cpu().numpy().flatten()
         pos_height = np.histogram(d_pos, bins=bins, range=(0,1))[0].max() / d_pos.size
@@ -84,13 +92,24 @@ class ModelEvaluator:
         ax.set_ylabel("Rank")
         ax.invert_yaxis()
 
+        # Recall
+        ax = axs[1, 1]
+        df = self.recall_at_ks(true_rank, probs_pos.size(0))
+        ax.plot(df["K"], df["Recall@K"], marker="o")
+        # plt.xscale("log", base=2)
+        ax.set_xlabel("Top-K")
+        ax.set_ylabel("Recall@K")
+        ax.set_title("Recall@K Curve")
+        ax.grid(True, which="both", ls="--", alpha=0.5)
+
         # Confusion matrix
+        ax = axs[2, 0]
         y_true = np.concatenate([np.ones_like(d_pos), np.zeros_like(d_neg)])
         y_pred = np.concatenate([d_pos, d_neg]) > threshold
         cm = confusion_matrix(y_true, y_pred, normalize='true')
         disp = ConfusionMatrixDisplay(cm, display_labels=["Negative", "Positive"])
-        disp.plot(ax=axs[1,1], cmap='Blues')
-        axs[1,1].set_title(f"Confusion Matrix (threshold={threshold:.2f})")
+        disp.plot(ax=ax, cmap='Blues')
+        ax.set_title(f"Confusion Matrix (threshold={threshold:.2f})")
 
         plt.tight_layout()
         return fig
@@ -101,8 +120,6 @@ class ModelEvaluator:
 
         # ranks
         true_rank = self._compute_true_ranks(probs)
-        rec = self._recall_at_k(true_rank, N)
-        print(rec)
 
         # flatten for thresholding
         mask = torch.eye(N, device=probs.device).bool()
@@ -124,6 +141,5 @@ class ModelEvaluator:
         return {
             'probs': probs.cpu().numpy(),
             'best_threshold': best_thresh,
-            'rec_log': rec,
             'plot': fig,
         }
