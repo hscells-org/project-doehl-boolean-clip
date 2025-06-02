@@ -9,19 +9,6 @@ class ModelEvaluator:
     def __init__(self, model):
         self.model = model
 
-    def _get_probs(self, in_bool, in_text):
-        self.model.eval()
-        with torch.no_grad():
-            outputs = self.model(in_bool, in_text, loss=False)
-            return (outputs["logits"] + 1) / 2  # NxN similarity scores
-
-    def _compute_true_ranks(self, probs):
-        # For each row, find rank of the true (diagonal) score
-        top_idxs = probs.argsort(descending=True)
-        true_idxs = torch.arange(probs.size(0), device=probs.device).unsqueeze(1)
-        true_rank = (top_idxs == true_idxs).argsort(descending=True)[:, 0]
-        return true_rank
-
     def recall_at_ks(self, true_rank: np.ndarray, N: int):
         ks, percents, recalls = [], [], []
         max_pow = int(np.log2(N))
@@ -101,6 +88,7 @@ class ModelEvaluator:
         ax.set_ylabel("Recall@K")
         at1 = df.at[0, "Recall@K"]
         ax.set_title(f"Recall@K Curve ({at1:.2f}@K=1)")
+        ax.set_ylim(-0.05, 1.05)
         ax.grid(True, which="both", ls="--", alpha=0.5)
 
         # Confusion matrix
@@ -116,11 +104,15 @@ class ModelEvaluator:
         return fig
 
     def evaluate(self, in_bool, in_text, plot=False, threshold=None, density=True, n_thresholds=100, threshold_search=True):
-        probs = self._get_probs(in_bool, in_text)
+        self.model.eval()
+        with torch.no_grad(): outputs: torch.Tensor = self.model(in_bool, in_text, return_loss=False)
+        probs = (outputs["logits"] + 1) / 2
         N = probs.size(0)
 
         # ranks
-        true_rank = self._compute_true_ranks(probs)
+        top_idxs = probs.argsort(descending=True)
+        true_idxs = torch.arange(probs.size(0), device=probs.device).unsqueeze(1)
+        true_rank = (top_idxs == true_idxs).argsort(descending=True)[:, 0]
 
         # flatten for thresholding
         mask = torch.eye(N, device=probs.device).bool()

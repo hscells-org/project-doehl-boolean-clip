@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
-from transformers import AutoTokenizer, Siglip2TextModel
+from transformers import AutoTokenizer
 from transformers import AutoModel
 from safetensors.torch import load_file
 
@@ -14,10 +14,7 @@ class DualSiglip2Model(nn.Module):
         super().__init__()
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        if "siglip" in model_name:
-            self.encoder_bool = Siglip2TextModel.from_pretrained(model_name)
-        else:
-            self.encoder_bool = AutoModel.from_pretrained(model_name)
+        self.encoder_bool = AutoModel.from_pretrained(model_name, trust_remote_code=True)
         self.encoder_text = deepcopy(self.encoder_bool)
         self.bias = nn.Parameter(torch.zeros(1))
         self.to(device)
@@ -26,7 +23,7 @@ class DualSiglip2Model(nn.Module):
         return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt", max_length=64).to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
-    def forward(self, in_bool, in_text, loss=True):
+    def forward(self, in_bool, in_text, return_loss=True):
         tok_bool = self.tokenize(in_bool)
         tok_text = self.tokenize(in_text)
         out_bool = self.encoder_bool(**tok_bool).pooler_output
@@ -34,7 +31,7 @@ class DualSiglip2Model(nn.Module):
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
         logits = out_bool @ out_text.t()  # + self.bias
-        loss = self.loss(logits) if loss else None
+        loss = self.loss(logits) if return_loss else None
         return {"loss": loss, "logits": logits}
 
     def loss(self, logits):
