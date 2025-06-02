@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
-from transformers import AutoTokenizer
-from transformers import AutoModel
+from transformers import AutoTokenizer, AutoModel, Siglip2TextModel
 from safetensors.torch import load_file
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -14,7 +13,10 @@ class DualSiglip2Model(nn.Module):
         super().__init__()
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.encoder_bool = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+        if "siglip" in model_name:
+            self.encoder_bool = Siglip2TextModel.from_pretrained(model_name, trust_remote_code=True)
+        else:
+            self.encoder_bool = AutoModel.from_pretrained(model_name, trust_remote_code=True)
         self.encoder_text = deepcopy(self.encoder_bool)
         self.bias = nn.Parameter(torch.zeros(1))
         self.to(device)

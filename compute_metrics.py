@@ -54,7 +54,7 @@ def compute_metrics(eval_pred):
     # Compute TPR and TNR at each unique score boundary
     tpr = cum_pos / total_pos
     tnr = (total_neg - cum_neg) / total_neg
-    score = tpr + tnr
+    score = (tpr + tnr)
     best_idx = np.argmax(score)
     best_thresh = y_scores[order][best_idx]
     best_score = float(score[best_idx])
