@@ -4,6 +4,9 @@ import os
 from itertools import chain
 from tqdm import tqdm
 from Bio import Entrez
+import pandas as pd
+from datasets import Dataset, DatasetDict
+from sklearn.model_selection import train_test_split
 
 Entrez.email = "simon.doehl@student.uni-tuebingen.de"
 
@@ -161,3 +164,39 @@ def process_TAR(path = os.path.join("tar", "2017-TAR"), verbose=False):
     with open('data/TAR_data.jsonl', 'w') as f:
         for rec in data:
             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+
+def paths_to_dataset(train_and_test: str|list[str], test_only: str|list[str] = None, split_perc: float = 0.1):
+    def ensure_list(v):
+        return [v] if isinstance(v, str) else v
+    train_and_test = ensure_list(train_and_test)
+    test_only = ensure_list(test_only)
+
+    test_dfs = []
+    train_dfs = []
+    def sort(data, split: bool = True):
+        for source, data in df.groupby("source"):
+            if split:
+                train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
+                train_dfs.append(train_part)
+            test_dfs.append((source, test_part if split else data))
+
+    for path in train_and_test:
+        df = pd.read_json(path, lines=True)
+        sort(df)
+
+    if test_only is not None:
+        for path in test_only:
+            df = pd.read_json(path, lines=True)
+            sort(df, False)
+
+    train_df = pd.concat(train_dfs).reset_index(drop=True)
+    # test_df = pd.concat(test_dfs).reset_index(drop=True)
+
+    train_dataset = Dataset.from_pandas(train_df)
+    # test_dataset = Dataset.from_pandas(test_df)
+    test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
+    dataset_dict = DatasetDict({
+        "train": train_dataset,
+        "test": test_datasets
+    })
+    return dataset_dict

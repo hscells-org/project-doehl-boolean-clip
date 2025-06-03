@@ -4,10 +4,6 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
 def compute_metrics(eval_pred):
-    """
-    Compute a suite of retrieval and classification metrics from raw logits.
-    Signature: compute_metrics(eval_pred)
-    """
     logits, _ = eval_pred
     # Convert logits to similarity scores in [0,1]
     conf: np.ndarray = (logits + 1) / 2
@@ -24,10 +20,10 @@ def compute_metrics(eval_pred):
     metrics = {f"recall@{k}": np.mean(ranks_pos < k) for k in ks}
     metrics['mean_rank'] = ranks_pos.mean()
     metrics['median_rank'] = np.median(ranks_pos)
-    metrics['mean_rank_relative'] = ranks_pos.mean() / N
-    metrics['median_rank_relative'] = np.median(ranks_pos) / N
-    metrics['min_rank'] = ranks_pos.min() / N
-    metrics['min_rank_norm'] = ranks_pos.min() / N
+    metrics['mean_rank_norm'] = ranks_pos.mean() / N
+    metrics['median_rank_norm'] = np.median(ranks_pos) / N
+    metrics['min_rank'] = ranks_pos.max()
+    metrics['min_rank_norm'] = ranks_pos.max() / N
 
     # Flatten positive (diagonal) and negative (off-diagonal) scores
     mask = np.eye(N, dtype=bool)
@@ -44,7 +40,7 @@ def compute_metrics(eval_pred):
     cum_pos = np.cumsum(y_true_sorted)
     cum_neg = np.cumsum(1 - y_true_sorted)
     n = y_true_sorted.size
-    for p in range(10, 100, 10):
+    for p in [1, 2, 5, 10, 25, 50]:
         idx = max(int(n * p / 100) - 1, 0)
         tp = cum_pos[idx]
         fn = total_pos - tp
@@ -67,12 +63,7 @@ def compute_metrics(eval_pred):
     return metrics
 
 
-def evaluate(model, in_bool, in_text, plot=False, threshold=None, density=True, n_thresholds=100, threshold_search=True):
-    """
-    Runs model inference, computes metrics via compute_metrics, and optionally plots diagnostics.
-    Returns a dict of metrics and, if requested, a matplotlib Figure under 'plot'.
-    """
-    # Inference
+def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
     model.eval()
     with torch.no_grad():
         outputs = model(in_bool, in_text, return_loss=False)
@@ -99,6 +90,7 @@ def evaluate(model, in_bool, in_text, plot=False, threshold=None, density=True, 
         ymax = max(pos_height, neg_height) * bins * 1.05
 
         fig, axs = plt.subplots(3, 2, figsize=(10, 12))
+        if title is not None: fig.suptitle(title)
         # positive histogram
         ax = axs[0,0]
         ax.hist(probs_pos, bins=50, range=(0,1), density=density)
