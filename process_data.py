@@ -82,7 +82,7 @@ class PubmedQuerys:
             # Some example code that should get the titles for each PMID.
             # Commented out because it will be pretty slow, likely.
             handle = Entrez.esummary(db="pubmed", id=",".join(pmids))
-            records = list(Entrez.parse(handle))
+            # records = list(Entrez.parse(handle))
             with open("data/pubmed-queries.jsonl", "w") as f:
                 for pmid in tqdm(Q, desc="getting pmid titles"):
                     f.write(json.dumps)
