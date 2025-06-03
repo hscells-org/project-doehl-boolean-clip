@@ -21,11 +21,13 @@ def compute_metrics(eval_pred):
     # Determine ks (up to 2^6 if N large)
     max_pow = int(np.log2(N))
     ks = [2**i for i in range(min(max_pow + 1, 7))]
-    metrics = {f"recall@{k}": float(np.mean(ranks_pos < k)) for k in ks}
-    metrics['mean_rank'] = float(ranks_pos.mean())
-    metrics['median_rank'] = float(np.median(ranks_pos))
-    metrics['mean_rank_relative'] = float(ranks_pos.mean() / N)
-    metrics['median_rank_relative'] = float(np.median(ranks_pos) / N)
+    metrics = {f"recall@{k}": np.mean(ranks_pos < k) for k in ks}
+    metrics['mean_rank'] = ranks_pos.mean()
+    metrics['median_rank'] = np.median(ranks_pos)
+    metrics['mean_rank_relative'] = ranks_pos.mean() / N
+    metrics['median_rank_relative'] = np.median(ranks_pos) / N
+    metrics['min_rank'] = ranks_pos.min() / N
+    metrics['min_rank_norm'] = ranks_pos.min() / N
 
     # Flatten positive (diagonal) and negative (off-diagonal) scores
     mask = np.eye(N, dtype=bool)
