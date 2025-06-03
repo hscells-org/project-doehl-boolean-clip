@@ -176,3 +176,5 @@ cython_debug/
 .pypirc
 /siglip2
 /tar
+/wandb
+/models
