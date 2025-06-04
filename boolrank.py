@@ -25,7 +25,7 @@ class DualSiglip2Model(nn.Module):
         if "siglip" in self.model_name:
             return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt", max_length=64).to(device)
         else:
-            return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt").to(device)
+            return self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
     def forward(self, in_bool, in_text, return_loss=True):

@@ -39,12 +39,13 @@ def compute_metrics(eval_pred):
     y_true_sorted = y_true[order]
     cum_pos = np.cumsum(y_true_sorted)
     cum_neg = np.cumsum(1 - y_true_sorted)
-    n = y_true_sorted.size
+    # n = y_true_sorted.size
     for p in [1, 2, 5, 10, 25, 50]:
-        idx = max(int(n * p / 100) - 1, 0)
-        tp = cum_pos[idx]
-        fn = total_pos - tp
-        metrics[f"recall@{p}%"] = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+        # idx = max(int(n * p / 100) - 1, 0)
+        # tp = cum_pos[idx]
+        # fn = total_pos - tp
+        # metrics[f"recall@{p}%"] = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+        metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(probs_pos.size * p / 100, 1))
 
     # Best threshold maximizing TPR + TNR
     tpr = cum_pos / total_pos
