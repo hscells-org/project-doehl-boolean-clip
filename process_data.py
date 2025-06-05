@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 
 Entrez.email = "simon.doehl@student.uni-tuebingen.de"
 
-class PubmedQuerys:
+class PubmedQueries:
     def __init__(self):
         self.bool_key = "bool_query"
         self.nl_key = "nl_query"
@@ -70,25 +70,68 @@ class PubmedQuerys:
                                     Q.add(qq)
                                     f2.write(q)
 
+        CACHE_FILE = "data/pubmed-cache.json"
+        # Load or initialize cache
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as cf:
+                cache = json.load(cf)
+        else:
+            cache = {}
+
+        # Read queries
+        queries = []
         with open("data/pubmed-queries.short", "r") as f:
-            Q = []
-            pmids = []
-            for line in tqdm(f, desc="getting pmids"):
-                handle = Entrez.esearch(db="pubmed", retmax=1, term=line)
+            for line in f:
+                query = line.strip()
+                if query:
+                    queries.append(query)
+
+        # Search for PMIDs
+        results = []
+        i = 0
+        for query in tqdm(queries, desc="Searching PMIDs"):
+            if query in cache.keys():
+                pmid = cache[query]
+                results.append({self.bool_key: query, 'pmid': pmid})
+                continue
+            i += 1
+            if i > 3000: break
+            try:
+                handle = Entrez.esearch(db="pubmed", term=query, retmax=1)
                 record = Entrez.read(handle)
                 handle.close()
-                if int(record["Count"]) > 0:
-                    pmid = record["IdList"][0]
-                    pmids.append(pmid)
-                    Q.append((line, pmid))
+            except Exception as e:
+                print(f"Error searching '{query}': {e}")
+                continue
 
-            # Some example code that should get the titles for each PMID.
-            # Commented out because it will be pretty slow, likely.
-            handle = Entrez.esummary(db="pubmed", id=",".join(pmids))
-            # records = list(Entrez.parse(handle))
-            with open("data/pubmed-queries.jsonl", "w") as f:
-                for pmid in tqdm(Q, desc="getting pmid titles"):
-                    f.write(json.dumps)
+            count = int(record.get("Count", 0))
+            if count > 0:
+                pmid = record["IdList"][0]
+                cache[query] = pmid
+                results.append({self.bool_key: query, 'pmid': pmid})
+
+        # Save updated cache
+        with open(CACHE_FILE, 'w') as cf:
+            json.dump(cache, cf, indent=2)
+
+        # Fetch summaries for all found PMIDs
+        pmids = [r['pmid'] for r in results]
+        if pmids:
+            handle = Entrez.esummary(db="pubmed", id=','.join(pmids))
+            summaries = list(Entrez.parse(handle))
+            handle.close()
+
+            # Merge summaries into results
+            pmid_to_summary = {rec['Id']: rec for rec in summaries}
+            for r in results:
+                summary = pmid_to_summary.get(r['pmid'], {})
+                r['nl_query'] = summary.get('Title', '')
+                r['source'] = 'pubmed-query'
+
+        # Save to JSONL
+        with open("data/pubmed-queries.jsonl", 'w') as f:
+            for rec in results:
+                f.write(json.dumps(rec) + '\n')
 
         with open("data/raw.jsonl", "r") as f:
             x = []
@@ -98,7 +141,7 @@ class PubmedQuerys:
                     and d["pubmed"].strip().startswith("(") \
                     and len(d["pubmed"].strip()) > 64 \
                         and "#" not in d["pubmed"].strip()[:8]:
-                    x.append({self.nl_key: d["title"], self.bool_key: d["pubmed"]})
+                    x.append({self.nl_key: d["title"], self.bool_key: d["pubmed"], "source": "raw-jsonl"})
 
         if not os.path.exists("./data/training-logs.jsonl"):
             with open("./data/training-logs.jsonl", "w") as f:
@@ -106,6 +149,10 @@ class PubmedQuerys:
                     f.write(json.dumps(item) + "\n")
 
         with open("./data/training-logs.jsonl", "r") as f:
+            for line in f:
+                x.append(json.loads(line))
+
+        with open("data/pubmed-queries.jsonl", "r") as f:
             for line in f:
                 x.append(json.loads(line))
 

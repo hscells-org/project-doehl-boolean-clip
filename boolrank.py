@@ -3,15 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 from transformers import AutoTokenizer, AutoModel, Siglip2TextModel
+from transformers.models.clip.modeling_clip import clip_loss
 from safetensors.torch import load_file
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
 class DualSiglip2Model(nn.Module):
-    def __init__(self, model_name="google/siglip2-base-patch16-224"):
+    def __init__(self, model_name="google/siglip2-base-patch16-224", loss_type="siglip"):
         super().__init__()
         self.model_name = model_name
+        self.loss_type = loss_type
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         if "siglip" in model_name:
             self.encoder_bool = Siglip2TextModel.from_pretrained(model_name, trust_remote_code=True)
@@ -25,7 +26,10 @@ class DualSiglip2Model(nn.Module):
         if "siglip" in self.model_name:
             return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt", max_length=64).to(device)
         else:
-            return self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
+            # try:
+            #     return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt").to(device)
+            # except:
+            return self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512).to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
     def forward(self, in_bool, in_text, return_loss=True):
@@ -36,10 +40,14 @@ class DualSiglip2Model(nn.Module):
         out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
         out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
         logits = out_bool @ out_text.t()  # + self.bias
-        loss = self.loss(logits) if return_loss else None
+        if return_loss:
+            match self.loss_type:
+                case "siglip": loss = self.siglip_loss(logits)
+                case "clip": loss = clip_loss(logits)
+        else: loss = None
         return {"loss": loss, "logits": logits}
 
-    def loss(self, logits):
+    def siglip_loss(self, logits):
         sim = logits + self.bias
         eye = torch.eye(sim.size(0), device=sim.device)
         y = -torch.ones_like(sim) + 2 * eye
