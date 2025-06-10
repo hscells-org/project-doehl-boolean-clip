@@ -7,7 +7,7 @@ def compute_metrics(eval_pred):
     logits, _ = eval_pred
     # Convert logits to similarity scores in [0,1]
     conf: np.ndarray = (logits + 1) / 2
-    N = conf.shape[0]
+    N, M = conf.shape
 
     # Compute true ranks for recall@k
     top_idxs = conf.argsort(axis=1)[:, ::-1]
@@ -26,11 +26,11 @@ def compute_metrics(eval_pred):
     metrics['min_rank_norm'] = ranks_pos.max() / N
 
     # Flatten positive (diagonal) and negative (off-diagonal) scores
-    mask = np.eye(N, dtype=bool)
-    probs_pos = conf[mask]
-    probs_neg = conf[~mask]
-    y_true = np.concatenate([np.ones_like(probs_pos), np.zeros_like(probs_neg)])
-    y_scores = np.concatenate([probs_pos, probs_neg])
+    mask = np.eye(N, M, dtype=bool)
+    conf_pos = conf[mask]
+    conf_neg = conf[~mask]
+    y_true = np.concatenate([np.ones_like(conf_pos), np.zeros_like(conf_neg)])
+    y_scores = np.concatenate([conf_pos, conf_neg])
 
     # Compute recall at decile thresholds
     total_pos = y_true.sum()
@@ -45,7 +45,7 @@ def compute_metrics(eval_pred):
         # tp = cum_pos[idx]
         # fn = total_pos - tp
         # metrics[f"recall@{p}%"] = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
-        metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(probs_pos.size * p / 100, 1))
+        metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(conf_pos.size * p / 100, 1))
 
     # Best threshold maximizing TPR + TNR
     tpr = cum_pos / total_pos
@@ -81,11 +81,11 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
         true_idxs = np.arange(N)[:, None]
         ranks_pos = np.argmax(top_idxs == true_idxs, axis=1)
         mask = np.eye(N, dtype=bool)
-        probs_pos = conf[mask]
-        probs_neg = conf[~mask]
+        conf_pos = conf[mask]
+        conf_neg = conf[~mask]
         thresh = metrics['best_threshold']
-        d_pos = probs_pos.flatten()
-        d_neg = probs_neg.flatten()
+        d_pos = conf_pos.flatten()
+        d_neg = conf_neg.flatten()
         pos_height = np.histogram(d_pos, bins=bins, range=(0,1))[0].max() / d_pos.size
         neg_height = np.histogram(d_neg, bins=bins, range=(0,1))[0].max() / d_neg.size
         ymax = max(pos_height, neg_height) * bins * 1.05
@@ -94,7 +94,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
         if title is not None: fig.suptitle(title)
         # positive histogram
         ax = axs[0,0]
-        ax.hist(probs_pos, bins=50, range=(0,1), density=density)
+        ax.hist(conf_pos, bins=50, range=(0,1), density=density)
         ax.axvline(d_pos.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_pos.mean():.2f}")
         ax.set_title('Positive Score Distribution')
@@ -105,7 +105,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
 
         # negative histogram
         ax = axs[0,1]
-        ax.hist(probs_neg, bins=50, range=(0,1), density=density)
+        ax.hist(conf_neg, bins=50, range=(0,1), density=density)
         ax.axvline(d_neg.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_neg.mean():.2f}")
         ax.set_title('Negative Score Distribution')
@@ -116,7 +116,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
         # boxplot of ranks
         ax = axs[1,0]
         ax.boxplot(ranks_pos, vert=True, patch_artist=True)
-        ax.set_ylim((0, probs_pos.size))
+        ax.set_ylim((0, conf_pos.size))
         ax.set_title("True Rank Boxplot (lower = better)")
         ax.set_ylabel("Rank")
         ax.invert_yaxis()
@@ -137,8 +137,8 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
 
         # confusion matrix
         ax = axs[2,0]
-        y_true = np.concatenate([np.ones_like(probs_pos), np.zeros_like(probs_neg)])
-        y_pred = (np.concatenate([probs_pos, probs_neg]) >= thresh)
+        y_true = np.concatenate([np.ones_like(conf_pos), np.zeros_like(conf_neg)])
+        y_pred = (np.concatenate([conf_pos, conf_neg]) >= thresh)
         cm = confusion_matrix(y_true, y_pred, normalize='true')
         disp = ConfusionMatrixDisplay(cm, display_labels=['Neg','Pos'])
         disp.plot(ax=ax, cmap='Blues')

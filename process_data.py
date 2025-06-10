@@ -95,7 +95,6 @@ class PubmedQueries:
                 results.append({self.bool_key: query, 'pmid': pmid})
                 continue
             i += 1
-            if i > 3000: break
             try:
                 handle = Entrez.esearch(db="pubmed", term=query, retmax=1)
                 record = Entrez.read(handle)
@@ -109,6 +108,10 @@ class PubmedQueries:
                 pmid = record["IdList"][0]
                 cache[query] = pmid
                 results.append({self.bool_key: query, 'pmid': pmid})
+            if i % 1000 == 0:
+                # Save updated cache
+                with open(CACHE_FILE, 'w') as cf:
+                    json.dump(cache, cf, indent=2)
 
         # Save updated cache
         with open(CACHE_FILE, 'w') as cf:
