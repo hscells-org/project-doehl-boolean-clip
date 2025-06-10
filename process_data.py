@@ -4,10 +4,13 @@ import os
 from itertools import chain
 from tqdm import tqdm
 from Bio import Entrez
+import pandas as pd
+from datasets import Dataset, DatasetDict
+from sklearn.model_selection import train_test_split
 
 Entrez.email = "simon.doehl@student.uni-tuebingen.de"
 
-class PubmedQuerys:
+class PubmedQueries:
     def __init__(self):
         self.bool_key = "bool_query"
         self.nl_key = "nl_query"
@@ -67,25 +70,71 @@ class PubmedQuerys:
                                     Q.add(qq)
                                     f2.write(q)
 
+        CACHE_FILE = "data/pubmed-cache.json"
+        # Load or initialize cache
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as cf:
+                cache = json.load(cf)
+        else:
+            cache = {}
+
+        # Read queries
+        queries = []
         with open("data/pubmed-queries.short", "r") as f:
-            Q = []
-            pmids = []
-            for line in tqdm(f, desc="getting pmids"):
-                handle = Entrez.esearch(db="pubmed", retmax=1, term=line)
+            for line in f:
+                query = line.strip()
+                if query:
+                    queries.append(query)
+
+        # Search for PMIDs
+        results = []
+        i = 0
+        for query in tqdm(queries, desc="Searching PMIDs"):
+            if query in cache.keys():
+                pmid = cache[query]
+                results.append({self.bool_key: query, 'pmid': pmid})
+                continue
+            i += 1
+            try:
+                handle = Entrez.esearch(db="pubmed", term=query, retmax=1)
                 record = Entrez.read(handle)
                 handle.close()
-                if int(record["Count"]) > 0:
-                    pmid = record["IdList"][0]
-                    pmids.append(pmid)
-                    Q.append((line, pmid))
+            except Exception as e:
+                print(f"Error searching '{query}': {e}")
+                continue
 
-            # Some example code that should get the titles for each PMID.
-            # Commented out because it will be pretty slow, likely.
-            handle = Entrez.esummary(db="pubmed", id=",".join(pmids))
-            records = list(Entrez.parse(handle))
-            with open("data/pubmed-queries.jsonl", "w") as f:
-                for pmid in tqdm(Q, desc="getting pmid titles"):
-                    f.write(json.dumps)
+            count = int(record.get("Count", 0))
+            if count > 0:
+                pmid = record["IdList"][0]
+                cache[query] = pmid
+                results.append({self.bool_key: query, 'pmid': pmid})
+            if i % 1000 == 0:
+                # Save updated cache
+                with open(CACHE_FILE, 'w') as cf:
+                    json.dump(cache, cf, indent=2)
+
+        # Save updated cache
+        with open(CACHE_FILE, 'w') as cf:
+            json.dump(cache, cf, indent=2)
+
+        # Fetch summaries for all found PMIDs
+        pmids = [r['pmid'] for r in results]
+        if pmids:
+            handle = Entrez.esummary(db="pubmed", id=','.join(pmids))
+            summaries = list(Entrez.parse(handle))
+            handle.close()
+
+            # Merge summaries into results
+            pmid_to_summary = {rec['Id']: rec for rec in summaries}
+            for r in results:
+                summary = pmid_to_summary.get(r['pmid'], {})
+                r['nl_query'] = summary.get('Title', '')
+                r['source'] = 'pubmed-query'
+
+        # Save to JSONL
+        with open("data/pubmed-queries.jsonl", 'w') as f:
+            for rec in results:
+                f.write(json.dumps(rec) + '\n')
 
         with open("data/raw.jsonl", "r") as f:
             x = []
@@ -95,7 +144,7 @@ class PubmedQuerys:
                     and d["pubmed"].strip().startswith("(") \
                     and len(d["pubmed"].strip()) > 64 \
                         and "#" not in d["pubmed"].strip()[:8]:
-                    x.append({self.nl_key: d["title"], self.bool_key: d["pubmed"]})
+                    x.append({self.nl_key: d["title"], self.bool_key: d["pubmed"], "source": "raw-jsonl"})
 
         if not os.path.exists("./data/training-logs.jsonl"):
             with open("./data/training-logs.jsonl", "w") as f:
@@ -103,6 +152,10 @@ class PubmedQuerys:
                     f.write(json.dumps(item) + "\n")
 
         with open("./data/training-logs.jsonl", "r") as f:
+            for line in f:
+                x.append(json.loads(line))
+
+        with open("data/pubmed-queries.jsonl", "r") as f:
             for line in f:
                 x.append(json.loads(line))
 
@@ -161,3 +214,39 @@ def process_TAR(path = os.path.join("tar", "2017-TAR"), verbose=False):
     with open('data/TAR_data.jsonl', 'w') as f:
         for rec in data:
             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+
+def paths_to_dataset(train_and_test: str|list[str], test_only: str|list[str] = None, split_perc: float = 0.1):
+    def ensure_list(v):
+        return [v] if isinstance(v, str) else v
+    train_and_test = ensure_list(train_and_test)
+    test_only = ensure_list(test_only)
+
+    test_dfs = []
+    train_dfs = []
+    def sort(data, split: bool = True):
+        for source, data in df.groupby("source"):
+            if split:
+                train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
+                train_dfs.append(train_part)
+            test_dfs.append((source, test_part if split else data))
+
+    for path in train_and_test:
+        df = pd.read_json(path, lines=True)
+        sort(df)
+
+    if test_only is not None:
+        for path in test_only:
+            df = pd.read_json(path, lines=True)
+            sort(df, False)
+
+    train_df = pd.concat(train_dfs).reset_index(drop=True)
+    # test_df = pd.concat(test_dfs).reset_index(drop=True)
+
+    train_dataset = Dataset.from_pandas(train_df)
+    # test_dataset = Dataset.from_pandas(test_df)
+    test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
+    dataset_dict = DatasetDict({
+        "train": train_dataset,
+        "test": test_datasets
+    })
+    return dataset_dict
