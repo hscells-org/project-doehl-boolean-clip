@@ -86,14 +86,16 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
         thresh = metrics['best_threshold']
         d_pos = conf_pos.flatten()
         d_neg = conf_neg.flatten()
-        pos_height = np.histogram(d_pos, bins=bins, range=(0,1))[0].max() / d_pos.size
-        neg_height = np.histogram(d_neg, bins=bins, range=(0,1))[0].max() / d_neg.size
+        def get_hist_height(data): return np.histogram(data, bins=bins, range=(0,1))[0].max() / data.size
+        pos_height = get_hist_height(d_pos)
+        neg_height = get_hist_height(d_neg)
         ymax = max(pos_height, neg_height) * bins * 1.05
 
         fig, axs = plt.subplots(3, 2, figsize=(10, 12))
         if title is not None: fig.suptitle(title)
         # positive histogram
         ax = axs[0,0]
+        ax.grid(True, which="both", ls="--", alpha=0.5)
         ax.hist(conf_pos, bins=50, range=(0,1), density=density)
         ax.axvline(d_pos.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_pos.mean():.2f}")
@@ -105,6 +107,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
 
         # negative histogram
         ax = axs[0,1]
+        ax.grid(True, which="both", ls="--", alpha=0.5)
         ax.hist(conf_neg, bins=50, range=(0,1), density=density)
         ax.axvline(d_neg.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_neg.mean():.2f}")

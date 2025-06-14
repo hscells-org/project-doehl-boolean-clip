@@ -3,10 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 from transformers import AutoTokenizer, AutoModel, Siglip2TextModel
-from transformers.models.clip.modeling_clip import clip_loss
 from safetensors.torch import load_file
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
+    return nn.functional.cross_entropy(logits, torch.arange(len(logits), device=logits.device), reduction='none')
+
+# from transformers.models.clip.modeling_clip import clip_loss
+def clip_loss(similarity: torch.Tensor) -> torch.Tensor:
+    caption_loss = contrastive_loss(similarity)
+    image_loss = contrastive_loss(similarity.t())
+    return (caption_loss + image_loss) / 2.0
 
 class DualSiglip2Model(nn.Module):
     def __init__(self, model_name="google/siglip2-base-patch16-224", loss_type="siglip"):
@@ -32,7 +40,7 @@ class DualSiglip2Model(nn.Module):
             return self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512).to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
-    def forward(self, in_bool, in_text, return_loss=True):
+    def forward(self, in_bool, in_text, return_loss=True, weights=None):
         tok_bool = self.tokenize(in_bool)
         tok_text = self.tokenize(in_text)
         out_bool = self.encoder_bool(**tok_bool).pooler_output
@@ -44,6 +52,9 @@ class DualSiglip2Model(nn.Module):
             match self.loss_type:
                 case "siglip": loss = self.siglip_loss(logits)
                 case "clip": loss = clip_loss(logits)
+            # if weights are given weights loss by mean of the mm of weights
+            if weights is not None: loss = loss * torch.tensor(weights).to(device)
+            loss = loss.mean()
         else: loss = None
         return {"loss": loss, "logits": logits}
 
@@ -53,8 +64,8 @@ class DualSiglip2Model(nn.Module):
         y = -torch.ones_like(sim) + 2 * eye
         loglik = F.logsigmoid(y * sim)
         nll = -torch.sum(loglik, dim=-1)
-        loss = nll.mean()
-        return loss
+        # loss = nll.mean()
+        return nll
 
     def load(self, path):
         state_dict = load_file(path, device)
