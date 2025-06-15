@@ -2,16 +2,18 @@ import numpy as np
 import torch
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+import math
 
 def compute_metrics(eval_pred):
     logits, _ = eval_pred
     # Convert logits to similarity scores in [0,1]
     conf: np.ndarray = (logits + 1) / 2
     N, M = conf.shape
+    metrics = {}
 
     # Compute true ranks for recall@k
     top_idxs = conf.argsort(axis=1)[:, ::-1]
-    true_idxs = np.arange(N)[:, None]
+    true_idxs = np.tile(np.arange(M), math.ceil(N / M))[:N][:, None]
     ranks_pos: np.ndarray = np.argmax(top_idxs == true_idxs, axis=1)
 
     # Determine ks (up to 2^6 if N large)
@@ -20,13 +22,16 @@ def compute_metrics(eval_pred):
     metrics = {f"recall@{k}": np.mean(ranks_pos < k) for k in ks}
     metrics['mean_rank'] = ranks_pos.mean()
     metrics['median_rank'] = np.median(ranks_pos)
-    metrics['mean_rank_norm'] = ranks_pos.mean() / N
-    metrics['median_rank_norm'] = np.median(ranks_pos) / N
+    metrics['mean_rank_norm'] = ranks_pos.mean() / M
+    metrics['median_rank_norm'] = np.median(ranks_pos) / M
     metrics['min_rank'] = ranks_pos.max()
-    metrics['min_rank_norm'] = ranks_pos.max() / N
+    metrics['min_rank_norm'] = ranks_pos.max() / M
+
+    for p in [1, 2, 5, 10, 25, 50]:
+        metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(N * p / 100, 1))
 
     # Flatten positive (diagonal) and negative (off-diagonal) scores
-    mask = np.eye(N, M, dtype=bool)
+    mask = np.eye(M, dtype=bool).repeat(math.ceil(N / M), axis=0)[:N]
     conf_pos = conf[mask]
     conf_neg = conf[~mask]
     y_true = np.concatenate([np.ones_like(conf_pos), np.zeros_like(conf_neg)])
@@ -39,13 +44,6 @@ def compute_metrics(eval_pred):
     y_true_sorted = y_true[order]
     cum_pos = np.cumsum(y_true_sorted)
     cum_neg = np.cumsum(1 - y_true_sorted)
-    # n = y_true_sorted.size
-    for p in [1, 2, 5, 10, 25, 50]:
-        # idx = max(int(n * p / 100) - 1, 0)
-        # tp = cum_pos[idx]
-        # fn = total_pos - tp
-        # metrics[f"recall@{p}%"] = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
-        metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(conf_pos.size * p / 100, 1))
 
     # Best threshold maximizing TPR + TNR
     tpr = cum_pos / total_pos
