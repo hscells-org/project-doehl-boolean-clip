@@ -5,17 +5,17 @@ import os
 import json
 from deduplication import remove_similar_jaccard
 
-def paths_to_dataset(train_and_test: str|list[str],
+def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
                      test_only_sources: list = [],
                      max_test_size: int = 3000):
-    def ensure_list(v):
-        return [v] if isinstance(v, str) else v
-    train_and_test = ensure_list(train_and_test)
+    def ensure_list(v): return [v] if isinstance(v, str) else v
+    paths = ensure_list(paths)
 
     test_dfs = []
     train_dfs = []
-    def sort(data):
+    for path in paths:
+        df = pd.read_json(path, lines=True)
         for source, data in df.groupby("source"):
             if source not in test_only_sources:
                 train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
@@ -24,10 +24,6 @@ def paths_to_dataset(train_and_test: str|list[str],
                 test_dfs.append((source, test_part[:max_test_size]))
             else:
                 test_dfs.append((source, data[:max_test_size]))
-
-    for path in train_and_test:
-        df = pd.read_json(path, lines=True)
-        sort(df)
 
     train_df = pd.concat(train_dfs).reset_index(drop=True)
 
