@@ -3,7 +3,7 @@ from datasets import Dataset, DatasetDict
 from sklearn.model_selection import train_test_split
 import os
 import json
-from deduplication import remove_similar_jaccard
+from deduplication import remove_similar_jaccard, similar_factor
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
@@ -36,6 +36,8 @@ def paths_to_dataset(paths: str|list[str],
         df = df.loc[~df[col].duplicated(keep='first')]
         test_dfs[i] = (source, df)
 
+    # scale for similar data
+    train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
     train_dataset = Dataset.from_pandas(train_df)
     test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
 

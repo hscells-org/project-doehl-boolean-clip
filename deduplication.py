@@ -1,6 +1,7 @@
 import re
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+import numpy as np
 
 _norm_sets = None
 _threshold = None
@@ -38,7 +39,7 @@ def find_similar_jaccard(data, threshold=0.8):
         for i, sims in tqdm(
             pool.imap_unordered(_worker, range(n)),
             total=n,
-            desc="Deduplicating",
+            desc="Finding similar",
         ):
             similar_dict[i] = sims
     return similar_dict
@@ -46,11 +47,23 @@ def find_similar_jaccard(data, threshold=0.8):
 def remove_similar_jaccard(data, threshold=0.8):
     similar_dict = find_similar_jaccard(data, threshold)
 
-    to_remove = set()
+    duplicate_found = set()
     unique = []
     data = list(data)
     for i in range(len(data)):
-        if i in to_remove: continue
+        if i in duplicate_found: continue
         unique.append(data[i])
-        to_remove.update(similar_dict[i])
+        duplicate_found.update(similar_dict[i])
     return unique
+
+def similar_factor(data, threshold=0.8):
+    similar_dict = find_similar_jaccard(data, threshold)
+    scaling_factors = np.ones(len(data))
+
+    duplicate_found = set()
+    data = list(data)
+    for i in range(len(data)):
+        if i in duplicate_found: continue
+        scaling_factors[i] = 1 / (len(similar_dict[i]) + 1)
+        duplicate_found.update(similar_dict[i])
+    return scaling_factors
