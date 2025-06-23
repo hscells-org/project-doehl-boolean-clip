@@ -60,10 +60,7 @@ def similar_factor(data, threshold=0.8):
     similar_dict = find_similar_jaccard(data, threshold)
     scaling_factors = np.ones(len(data))
 
-    duplicate_found = set()
     data = list(data)
     for i in range(len(data)):
-        if i in duplicate_found: continue
         scaling_factors[i] = 1 / (len(similar_dict[i]) + 1)
-        duplicate_found.update(similar_dict[i])
     return scaling_factors

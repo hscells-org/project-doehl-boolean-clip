@@ -31,9 +31,10 @@ def compute_metrics(eval_pred):
         metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(N * p / 100, 1))
 
     # Flatten positive (diagonal) and negative (off-diagonal) scores
-    mask = np.eye(M, dtype=bool).repeat(math.ceil(N / M), axis=0)[:N]
+    mask = np.tile(np.eye(M, dtype=bool), math.ceil(N / M)).T[:N]
     conf_pos = conf[mask]
     conf_neg = conf[~mask]
+    conf_neg = conf_neg[conf_neg >= 0]
     y_true = np.concatenate([np.ones_like(conf_pos), np.zeros_like(conf_neg)])
     y_scores = np.concatenate([conf_pos, conf_neg])
 

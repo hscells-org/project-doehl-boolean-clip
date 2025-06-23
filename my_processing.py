@@ -4,10 +4,12 @@ from sklearn.model_selection import train_test_split
 import os
 import json
 from deduplication import remove_similar_jaccard, similar_factor
+import numpy as np
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
                      test_only_sources: list = [],
+                     train_sources = [],
                      max_test_size: int = 3000):
     def ensure_list(v): return [v] if isinstance(v, str) else v
     paths = ensure_list(paths)
@@ -20,12 +22,13 @@ def paths_to_dataset(paths: str|list[str],
             if source not in test_only_sources:
                 train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
                 train_part['quality'] = train_part['quality'] / train_part.shape[0]
-                train_dfs.append(train_part)
+                if source in train_sources: train_dfs.append(train_part)
                 test_dfs.append((source, test_part[:max_test_size]))
             else:
                 test_dfs.append((source, data[:max_test_size]))
 
     train_df = pd.concat(train_dfs).reset_index(drop=True)
+    train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
 
     for i, (source, df) in enumerate(test_dfs):
         col = 'bool_query'
