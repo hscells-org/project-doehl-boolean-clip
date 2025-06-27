@@ -32,7 +32,7 @@ def paths_to_dataset(paths: str|list[str],
     train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
     # pad with values from the start to make fill batches
     excess = train_df.shape[0] % train_batch
-    if excess > 0: train_df = pd.concat(train_df, train_df.iloc[np.arange(train_batch - excess)])
+    if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
 
     for i, (source, df) in enumerate(test_dfs):
         col = 'bool_query'
