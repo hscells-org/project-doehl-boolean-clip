@@ -10,7 +10,8 @@ def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
                      test_only_sources: list = [],
                      train_sources = [],
-                     max_test_size: int = 3000):
+                     train_batch = 2,
+                     eval_batch = 30):
     def ensure_list(v): return [v] if isinstance(v, str) else v
     paths = ensure_list(paths)
 
@@ -23,12 +24,15 @@ def paths_to_dataset(paths: str|list[str],
                 train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
                 train_part['quality'] = train_part['quality'] / train_part.shape[0]
                 if source in train_sources: train_dfs.append(train_part)
-                test_dfs.append((source, test_part[:max_test_size]))
+                test_dfs.append((source, test_part))
             else:
-                test_dfs.append((source, data[:max_test_size]))
+                test_dfs.append((source, data))
 
     train_df = pd.concat(train_dfs).reset_index(drop=True)
     train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
+    # pad with values from the start to make fill batches
+    excess = train_df.shape[0] % train_batch
+    if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
 
     for i, (source, df) in enumerate(test_dfs):
         col = 'bool_query'
@@ -37,6 +41,10 @@ def paths_to_dataset(paths: str|list[str],
         df = df[df[col].isin(deduped)]
         # remove exact duplicates
         df = df.loc[~df[col].duplicated(keep='first')]
+        # pad
+        excess = df.shape[0] % eval_batch
+        if excess > 0:
+            df = pd.concat([df, df.iloc[np.arange(eval_batch - excess)]])
         test_dfs[i] = (source, df)
 
     # scale for similar data
