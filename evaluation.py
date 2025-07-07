@@ -3,6 +3,9 @@ import torch
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import math
+from my_processing import combined_data_to_df
+from scipy.stats import spearmanr
+from collections import defaultdict
 
 def compute_metrics(eval_pred):
     logits, _ = eval_pred
@@ -150,3 +153,52 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
         metrics['plot'] = fig
 
     return metrics
+
+def evaluate_on_generated(path_to_combined, model):
+    res = defaultdict(lambda: defaultdict(list))
+    df = combined_data_to_df(path_to_combined)
+    for model_name, model_data in df.items():
+        byid = model_data.sort_values("f3").groupby("id")
+        prompt_data = list(map(lambda tpl: tpl[1], byid))
+        res[model_name]["prompt_amt"] = len(prompt_data)
+        for data in prompt_data:
+            queries = list(data["generated_query"].values)
+            if len(queries) < 2: continue
+            topic = data["topic"].iloc[0]
+            logits = model(topic, queries, False)["logits"]
+
+            tensor = logits.squeeze().cpu()
+            # Original ranks (0-based indices)
+            original_ranks = torch.arange(len(tensor))
+
+            # Sorted values → get the sorted indices → assign new ranks
+            sorted_indices = torch.argsort(tensor, descending=True)
+            new_ranks = torch.empty_like(sorted_indices)
+            new_ranks[sorted_indices] = torch.arange(len(tensor))
+            # print(original_ranks)
+            # print(new_ranks)
+
+            spearman_corr, _ = spearmanr(original_ranks.numpy(), new_ranks.numpy())
+            offset_sum = (original_ranks-new_ranks.float()).abs().sum()
+            n = original_ranks.size()[0]
+            norm_offset = ((offset_sum)*2/(n**2-n%2)).numpy()
+
+            # print(f"Spearman correlation coefficient: {spearman_corr:.4f}")
+            # print(f"Normalized offset sum {norm_offset:.3f}")
+            res[model_name]["spearman"].append(spearman_corr)
+            res[model_name]["norm_offset"].append(norm_offset)
+            res[model_name]["query_amt"].append(n)
+
+    for model_name, metrics in res.items():
+        print(model_name.split("\\")[-1].split(".")[0])
+        spearman = np.mean(metrics["spearman"])
+        offset = np.mean(metrics["norm_offset"])
+        query_amt = np.mean(metrics["query_amt"])
+        med_query_amt = np.median(metrics["query_amt"])
+        prompt_amt = metrics["prompt_amt"]
+        print(f"Spearman coeff.:\t{spearman:.3f}")
+        print(f"Norm. offset sum:\t{offset:.3f}")
+        print(f"Prompt amount:   \t{prompt_amt}")
+        print(f"Avg. queries p. prompt:\t{query_amt:.3f}")
+        print(f"Med. queries p. prompt:\t{med_query_amt}")
+        print("\n")
