@@ -100,7 +100,7 @@ class PubmedQueries:
         for query in tqdm(queries, desc="Searching PMIDs"):
             tokenized = ' '.join([str(t) for t in tokenizer.encode(query)])
             try:
-                record = new_cache[tokenized]
+                record = cache[tokenized]
             except:
                 i += 1
                 try:
@@ -114,7 +114,7 @@ class PubmedQueries:
             count = int(record.get("Count", 0))
             if count > 0:
                 pmid = record["IdList"][0]
-                cache[tokenized] = record
+                new_cache[tokenized] = record
                 results.append({self.bool_key: query, 'pmid': pmid})
             if i % 100 == 0:
                 # Save updated cache
