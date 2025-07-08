@@ -6,6 +6,8 @@ import math
 from my_processing import combined_data_to_df
 from scipy.stats import spearmanr
 from collections import defaultdict
+import pandas as pd
+from IPython.display import HTML, display
 
 def compute_metrics(eval_pred):
     logits, _ = eval_pred
@@ -189,16 +191,29 @@ def evaluate_on_generated(path_to_combined, model):
             res[model_name]["norm_offset"].append(norm_offset)
             res[model_name]["query_amt"].append(n)
 
-    for model_name, metrics in res.items():
-        print(model_name.split("\\")[-1].split(".")[0])
-        spearman = np.mean(metrics["spearman"])
-        offset = np.mean(metrics["norm_offset"])
-        query_amt = np.mean(metrics["query_amt"])
-        med_query_amt = np.median(metrics["query_amt"])
-        prompt_amt = metrics["prompt_amt"]
-        print(f"Spearman coeff.:\t{spearman:.3f}")
-        print(f"Norm. offset sum:\t{offset:.3f}")
-        print(f"Prompt amount:   \t{prompt_amt}")
-        print(f"Avg. queries p. prompt:\t{query_amt:.3f}")
-        print(f"Med. queries p. prompt:\t{med_query_amt}")
-        print("\n")
+    rows = []
+    for model_path, metrics in res.items():
+        name = model_path.split("\\")[-1].split(".")[0]
+        rows.append({
+            "model": name,
+            "spearman": np.mean(metrics["spearman"]),
+            "norm_offset_sum": np.mean(metrics["norm_offset"]),
+            "avg_queries_per_prompt": np.mean(metrics["query_amt"]),
+            "med_queries_per_prompt": np.median(metrics["query_amt"])
+        })
+
+    df = pd.DataFrame(rows)
+    avg_row = df.mean(numeric_only=True)
+    avg_row["model"] = "Average"
+    df = pd.concat([df, avg_row.to_frame().T], ignore_index=True)
+
+    def highlight_last_row(row):
+        return ['font-weight: bold;' if row.name == len(df) - 1 else '' for _ in row]
+    fmt = {
+        "spearman":            "{:.3f}",
+        "norm_offset_sum":     "{:.3f}",
+        "avg_queries_per_prompt": "{:.3f}",
+    }
+
+    styled = df.style.apply(highlight_last_row, axis=1).format(fmt)
+    display(HTML(styled.to_html()))
