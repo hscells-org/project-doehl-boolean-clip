@@ -3,7 +3,6 @@ import torch
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import math
-from my_processing import combined_data_to_df
 from scipy.stats import spearmanr
 from collections import defaultdict
 import pandas as pd
@@ -156,55 +155,48 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None):
 
     return metrics
 
-def evaluate_on_generated(path_to_combined, model):
+def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
+    main_name = group_keys[-1]
     res = defaultdict(lambda: defaultdict(list))
-    df = combined_data_to_df(path_to_combined)
-    for model_name, model_data in df.items():
-        byid = model_data.sort_values("f3").groupby("id")
-        prompt_data = list(map(lambda tpl: tpl[1], byid))
-        res[model_name]["prompt_amt"] = len(prompt_data)
-        for data in prompt_data:
-            queries = list(data["generated_query"].values)
-            if len(queries) < 2: continue
-            topic = data["topic"].iloc[0]
-            logits = model(topic, queries, False)["logits"]
+    df = pd.read_json("data/combined_outputs.jsonl", lines=True)
+    byid = df.sort_values("f3").groupby(group_keys)
+    prompt_data = list(map(lambda tpl: tpl[1], byid))
+    for group in prompt_data:
+        group = group[~group.duplicated(["id", "f3"])]
+        name = group[main_name].iloc[0]
+        res[name]["prompt_amt"] = len(prompt_data)
+        queries = list(group["generated_query"].values)
+        if len(queries) < 2: continue
+        topic = group["topic"].iloc[0]
+        logits = model(topic, queries, False)["logits"]
 
-            tensor = logits.squeeze().cpu()
-            # Original ranks (0-based indices)
-            original_ranks = torch.arange(len(tensor))
+        tensor = logits.squeeze().cpu()
+        # Original ranks (0-based indices)
+        original_ranks = torch.arange(len(tensor))
 
-            # Sorted values → get the sorted indices → assign new ranks
-            sorted_indices = torch.argsort(tensor, descending=True)
-            new_ranks = torch.empty_like(sorted_indices)
-            new_ranks[sorted_indices] = torch.arange(len(tensor))
-            # print(original_ranks)
-            # print(new_ranks)
+        # Sorted values → get the sorted indices → assign new ranks
+        sorted_indices = torch.argsort(tensor, descending=True)
+        new_ranks = torch.empty_like(sorted_indices)
+        new_ranks[sorted_indices] = torch.arange(len(tensor))
 
-            spearman_corr, _ = spearmanr(original_ranks.numpy(), new_ranks.numpy())
-            offset_sum = (original_ranks-new_ranks.float()).abs().sum()
-            n = original_ranks.size()[0]
-            norm_offset = ((offset_sum)*2/(n**2-n%2)).numpy()
+        spearman_corr, _ = spearmanr(original_ranks.numpy(), new_ranks.numpy())
+        offset_sum = (original_ranks-new_ranks.float()).abs().sum()
+        n = original_ranks.size()[0]
+        norm_offset = ((offset_sum)*2/(n**2-n%2)).numpy()
 
-            # print(f"Spearman correlation coefficient: {spearman_corr:.4f}")
-            # print(f"Normalized offset sum {norm_offset:.3f}")
-            res[model_name]["spearman"].append(spearman_corr)
-            res[model_name]["norm_offset"].append(norm_offset)
-            res[model_name]["query_amt"].append(n)
+        res[name]["spearman"].append(spearman_corr)
+        res[name]["norm_offset"].append(norm_offset)
+        res[name]["query_amt"].append(n)
 
-    rows = []
-    for model_path, metrics in res.items():
-        name = model_path.split("\\")[-1].split(".")[0]
-        rows.append({
-            "model": name,
-            "spearman": np.mean(metrics["spearman"]),
-            "norm_offset_sum": np.mean(metrics["norm_offset"]),
-            "avg_queries_per_prompt": np.mean(metrics["query_amt"]),
-            "med_queries_per_prompt": np.median(metrics["query_amt"])
-        })
-
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame({
+        main_name: list(res.keys()),
+        "spearman": [np.mean(m["spearman"]) for m in res.values()],
+        "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
+        "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
+        "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
+    })
     avg_row = df.mean(numeric_only=True)
-    avg_row["model"] = "Average"
+    avg_row[main_name] = "Average"
     df = pd.concat([df, avg_row.to_frame().T], ignore_index=True)
 
     def highlight_last_row(row):
