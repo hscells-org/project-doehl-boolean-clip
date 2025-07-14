@@ -3,7 +3,7 @@ import torch
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import math
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, pearsonr
 from collections import defaultdict
 import pandas as pd
 from IPython.display import HTML, display
@@ -168,23 +168,24 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         queries = list(group["generated_query"].values)
         if len(queries) < 2: continue
         topic = group["topic"].iloc[0]
-        logits = model(topic, queries, False)["logits"]
+        logits = model(queries, topic, False)["logits"]
 
         tensor = logits.squeeze().cpu()
         # Original ranks (0-based indices)
         original_ranks = torch.arange(len(tensor))
 
         # Sorted values → get the sorted indices → assign new ranks
-        sorted_indices = torch.argsort(tensor, descending=True)
-        new_ranks = torch.empty_like(sorted_indices)
-        new_ranks[sorted_indices] = torch.arange(len(tensor))
+        sorted_indices = torch.argsort(tensor)
+        new_ranks = torch.arange(len(tensor))[sorted_indices]
 
         spearman_corr, _ = spearmanr(original_ranks.numpy(), new_ranks.numpy())
+        pearson_corr, _ = pearsonr(group["f3"].values, tensor.detach().numpy())
         offset_sum = (original_ranks-new_ranks.float()).abs().sum()
         n = original_ranks.size()[0]
         norm_offset = ((offset_sum)*2/(n**2-n%2)).numpy()
 
         res[name]["spearman"].append(spearman_corr)
+        res[name]["pearson"].append(pearson_corr)
         res[name]["norm_offset"].append(norm_offset)
         res[name]["query_amt"].append(n)
         res[name]["f3_variance"].append(np.var(group['f3'].values))
@@ -192,10 +193,11 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
     df = pd.DataFrame({
         main_name: list(res.keys()),
         "spearman": [np.mean(m["spearman"]) for m in res.values()],
+        "pearson": [np.mean(m["pearson"]) for m in res.values()],
         # "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
-        "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
         # "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
-        "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()]
+        "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()],
+        # "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
     })
 
     avg_row = df.mean(numeric_only=True)
@@ -204,7 +206,8 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
 
     df = df.astype({
         "spearman": float,
-        "avg_queries_per_prompt": float,
+        "pearson": float,
+        # "avg_queries_per_prompt": float,
         "f3_variance": float,
     })
 
