@@ -77,9 +77,11 @@ class PubmedQueries:
         CACHE_FILE = "data/pubmed-cache.json"
         cache = {}
         # Load or initialize cache
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'r') as cf:
-                cache = json.load(cf)
+        try:
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, 'r') as cf:
+                    cache = json.load(cf)
+        except: print("Couldn't load pubmed cache")
 
         # Read queries
         queries = []

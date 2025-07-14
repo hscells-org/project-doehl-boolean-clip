@@ -187,25 +187,37 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         res[name]["spearman"].append(spearman_corr)
         res[name]["norm_offset"].append(norm_offset)
         res[name]["query_amt"].append(n)
+        res[name]["f3_variance"].append(np.var(group['f3'].values))
 
     df = pd.DataFrame({
         main_name: list(res.keys()),
         "spearman": [np.mean(m["spearman"]) for m in res.values()],
-        "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
+        # "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
         "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
-        "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
+        # "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
+        "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()]
     })
+
     avg_row = df.mean(numeric_only=True)
     avg_row[main_name] = "Average"
     df = pd.concat([df, avg_row.to_frame().T], ignore_index=True)
 
-    def highlight_last_row(row):
-        return ['font-weight: bold;' if row.name == len(df) - 1 else '' for _ in row]
-    fmt = {
-        "spearman":            "{:.3f}",
-        "norm_offset_sum":     "{:.3f}",
-        "avg_queries_per_prompt": "{:.3f}",
-    }
+    df = df.astype({
+        "spearman": float,
+        "avg_queries_per_prompt": float,
+        "f3_variance": float,
+    })
 
-    styled = df.style.apply(highlight_last_row, axis=1).format(fmt)
-    display(HTML(styled.to_html()))
+    # def highlight_last_row(row):
+    #     return ['font-weight: bold;' if row.name == len(df) - 1 else '' for _ in row]
+    # fmt = {
+    #     "spearman":            "{:.3f}",
+    #     # "norm_offset_sum":     "{:.3f}",
+    #     "avg_queries_per_prompt": "{:.3f}",
+    #     # "med_queries_per_prompt": "{}",
+    #     "f3_variance": "{:.1e}",
+    # }
+    # styled = df.style.apply(highlight_last_row, axis=1).format(fmt)
+    # display(HTML(styled.to_html()))
+    df = df.round(4)
+    display(df)
