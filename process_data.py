@@ -75,12 +75,13 @@ class PubmedQueries:
         if optional_steps: self.queries_to_short()
 
         CACHE_FILE = "data/pubmed-cache.json"
+        cache = {}
         # Load or initialize cache
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'r') as cf:
-                cache = json.load(cf)
-        else:
-            cache = {}
+        try:
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, 'r') as cf:
+                    cache = json.load(cf)
+        except: print("Couldn't load pubmed cache")
 
         # Read queries
         queries = []
@@ -122,8 +123,9 @@ class PubmedQueries:
                     json.dump(new_cache, cf, indent=2)
 
         # Save updated cache
+        cache.update(new_cache)
         with open(CACHE_FILE, 'w') as cf:
-            json.dump(cache.update(new_cache), cf, indent=2)
+            json.dump(cache, cf, indent=2)
 
         # Fetch summaries for all found PMIDs
         pmids = [r['pmid'] for r in results]

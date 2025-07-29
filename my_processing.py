@@ -5,8 +5,6 @@ import os
 import json
 from deduplication import remove_similar_jaccard, similar_factor
 import numpy as np
-from pathlib import Path
-from collections import defaultdict
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
@@ -106,15 +104,3 @@ def process_TAR(path = os.path.join("tar", "2017-TAR"), verbose=False):
     with open('data/TAR_data.jsonl', 'w') as f:
         for rec in data:
             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
-
-def combined_data_to_df(path: Path):
-    model_dirs = sorted([d for d in path.glob("*")])
-    if not model_dirs: return
-
-    dct = defaultdict(dict)
-    for model_dir in model_dirs:
-        model = str(model_dir).split("/")[-1]
-        res = model_dir.with_suffix(".jsonl")
-        df = pd.read_json(res, lines=True)
-        dct[model] = df[~df.duplicated(["id", "f3"])]
-    return dct
