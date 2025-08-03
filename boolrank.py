@@ -33,12 +33,8 @@ class DualSiglip2Model(nn.Module):
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
     def forward(self, in_bool, in_text, return_loss=True):
-        tok_bool = self.tokenize(in_bool)
-        tok_text = self.tokenize(in_text)
-        out_bool = self.encoder_bool(**tok_bool).pooler_output
-        out_text = self.encoder_text(**tok_text).pooler_output
-        out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
-        out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
+        out_bool = self.encode_bool(in_bool)
+        out_text = self.encode_text(in_text)
         logits = out_bool @ out_text.t()  # + self.bias
         if return_loss:
             match self.loss_type:
@@ -46,6 +42,16 @@ class DualSiglip2Model(nn.Module):
                 case "clip": loss = clip_loss(logits)
         else: loss = None
         return {"loss": loss, "logits": logits}
+
+    def encode_text(self, in_text):
+        tok_text = self.tokenize(in_text)
+        out_text = self.encoder_text(**tok_text).pooler_output
+        return out_text / out_text.norm(p=2, dim=-1, keepdim=True)
+
+    def encode_bool(self, in_bool):
+        tok_bool = self.tokenize(in_bool)
+        out_bool = self.encoder_bool(**tok_bool).pooler_output
+        return out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
 
     def siglip_loss(self, logits):
         sim = logits + self.bias

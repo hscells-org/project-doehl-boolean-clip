@@ -7,6 +7,7 @@ from scipy.stats import spearmanr, pearsonr
 from collections import defaultdict
 import pandas as pd
 from IPython.display import HTML, display
+from tqdm import tqdm
 
 def compute_metrics(eval_pred):
     logits, _ = eval_pred
@@ -161,16 +162,25 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
     df = pd.read_json("data/combined_outputs.jsonl", lines=True)
     byid = df.sort_values("f3").groupby(group_keys)
     prompt_data = list(map(lambda tpl: tpl[1], byid))
-    for group in prompt_data:
+    for group in tqdm(prompt_data, desc="Evaluating groups"):
         group = group[~group.duplicated(["id", "f3"])]
+        if len(group) <= 3: continue
+
         name = group[main_name].iloc[0]
         res[name]["prompt_amt"] = len(prompt_data)
         queries = list(group["generated_query"].values)
         if len(queries) < 2: continue
         topic = group["topic"].iloc[0]
-        logits = model(queries, topic, False)["logits"]
 
-        tensor = logits.squeeze().cpu()
+        tensors = [
+            model(query, topic, False)["logits"]
+                .cpu().detach()
+            for query in queries
+        ]
+        # print(tensors)
+        # concatenate them along the batch dimension
+        tensor = torch.cat(tensors).squeeze()
+
         # Original ranks (0-based indices)
         original_ranks = torch.arange(len(tensor))
 
@@ -188,7 +198,8 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         res[name]["pearson"].append(pearson_corr)
         res[name]["norm_offset"].append(norm_offset)
         res[name]["query_amt"].append(n)
-        res[name]["f3_variance"].append(np.var(group['f3'].values))
+        res[name]["f3_variance"].append(np.sqrt(np.var(group['f3'].values)))
+        res[name]["best_rank"].append(new_ranks[-1] / len(tensor))
 
     df = pd.DataFrame({
         main_name: list(res.keys()),
@@ -197,6 +208,7 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         # "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
         # "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
         "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()],
+        "best_rank": [np.mean(m["best_rank"]) for m in res.values()],
         # "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
     })
 
@@ -209,6 +221,7 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         "pearson": float,
         # "avg_queries_per_prompt": float,
         "f3_variance": float,
+        "best_rank": float,
     })
 
     # def highlight_last_row(row):
