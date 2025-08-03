@@ -43,15 +43,42 @@ class DualSiglip2Model(nn.Module):
         else: loss = None
         return {"loss": loss, "logits": logits}
 
-    def encode_text(self, in_text):
-        tok_text = self.tokenize(in_text)
-        out_text = self.encoder_text(**tok_text).pooler_output
-        return out_text / out_text.norm(p=2, dim=-1, keepdim=True)
+    def encode_text(self, in_text, batch_size = 64):
+        single = False
+        if isinstance(in_text, str):
+            in_text = [in_text]
+            single = True
 
-    def encode_bool(self, in_bool):
-        tok_bool = self.tokenize(in_bool)
-        out_bool = self.encoder_bool(**tok_bool).pooler_output
-        return out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
+        all_emb = []
+        # ensure model is in eval mode
+        self.encoder_text.eval()
+        for i in range(0, len(in_text), batch_size):
+            batch = in_text[i : i + batch_size]
+            tok = self.tokenize(batch)
+            out = self.encoder_text(**tok).pooler_output  # (B, D)
+            emb = out / out.norm(p=2, dim=-1, keepdim=True)
+            all_emb.append(emb)
+
+        emb_cat = torch.cat(all_emb, dim=0)  # (N, D)
+        return emb_cat[0] if single else emb_cat
+
+    def encode_bool(self, in_bool, batch_size = 64):
+        single = False
+        if isinstance(in_bool, str):
+            in_bool = [in_bool]
+            single = True
+
+        all_emb = []
+        self.encoder_bool.eval()
+        for i in range(0, len(in_bool), batch_size):
+            batch = in_bool[i : i + batch_size]
+            tok = self.tokenize(batch)
+            out = self.encoder_bool(**tok).pooler_output  # (B, D)
+            emb = out / out.norm(p=2, dim=-1, keepdim=True)
+            all_emb.append(emb)
+
+        emb_cat = torch.cat(all_emb, dim=0)
+        return emb_cat[0] if single else emb_cat
 
     def siglip_loss(self, logits):
         sim = logits + self.bias
