@@ -33,8 +33,8 @@ class DualSiglip2Model(nn.Module):
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
     def forward(self, in_bool, in_text, return_loss=True):
-        out_bool = self.encode_bool(in_bool)
-        out_text = self.encode_text(in_text)
+        out_bool = self.encode_bool(in_bool, eval_mode=not return_loss)
+        out_text = self.encode_text(in_text, eval_mode=not return_loss)
         logits = out_bool @ out_text.t()  # + self.bias
         if return_loss:
             match self.loss_type:
@@ -43,39 +43,45 @@ class DualSiglip2Model(nn.Module):
         else: loss = None
         return {"loss": loss, "logits": logits}
 
-    def encode_text(self, in_text, batch_size = 64):
+    def encode_text(self, in_text, batch_size=1, eval_mode=True):
         single = False
         if isinstance(in_text, str):
             in_text = [in_text]
             single = True
 
-        all_emb = []
-        # ensure model is in eval mode
-        self.encoder_text.eval()
-        for i in range(0, len(in_text), batch_size):
-            batch = in_text[i : i + batch_size]
-            tok = self.tokenize(batch)
-            out = self.encoder_text(**tok).pooler_output  # (B, D)
-            emb = out / out.norm(p=2, dim=-1, keepdim=True)
-            all_emb.append(emb)
+        if eval_mode: self.encoder_text.eval()
+        context = torch.no_grad() if eval_mode else torch.enable_grad()
 
-        emb_cat = torch.cat(all_emb, dim=0)  # (N, D)
+        all_emb = []
+        with context:
+            for i in range(0, len(in_text), batch_size):
+                batch = in_text[i : i + batch_size]
+                tok = self.tokenize(batch)
+                out = self.encoder_text(**tok).pooler_output
+                emb = out / out.norm(p=2, dim=-1, keepdim=True)
+                all_emb.append(emb)
+
+        emb_cat = torch.cat(all_emb, dim=0)
         return emb_cat[0] if single else emb_cat
 
-    def encode_bool(self, in_bool, batch_size = 64):
+    def encode_bool(self, in_bool, eval_mode=True, batch_size = 1):
         single = False
         if isinstance(in_bool, str):
             in_bool = [in_bool]
             single = True
+            single = True
+
+        if eval_mode: self.encoder_text.eval()
+        context = torch.no_grad() if eval_mode else torch.enable_grad()
 
         all_emb = []
-        self.encoder_bool.eval()
-        for i in range(0, len(in_bool), batch_size):
-            batch = in_bool[i : i + batch_size]
-            tok = self.tokenize(batch)
-            out = self.encoder_bool(**tok).pooler_output  # (B, D)
-            emb = out / out.norm(p=2, dim=-1, keepdim=True)
-            all_emb.append(emb)
+        with context:
+            for i in range(0, len(in_bool), batch_size):
+                batch = in_bool[i : i + batch_size]
+                tok = self.tokenize(batch)
+                out = self.encoder_bool(**tok).pooler_output
+                emb = out / out.norm(p=2, dim=-1, keepdim=True)
+                all_emb.append(emb)
 
         emb_cat = torch.cat(all_emb, dim=0)
         return emb_cat[0] if single else emb_cat
