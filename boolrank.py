@@ -58,10 +58,10 @@ class DualSiglip2Model(nn.Module):
                 batch = in_text[i : i + batch_size]
                 tok = self.tokenize(batch)
                 out = self.encoder_text(**tok).pooler_output
-                emb = out / out.norm(p=2, dim=-1, keepdim=True)
-                all_emb.append(emb)
+                all_emb.append(out)
 
         emb_cat = torch.cat(all_emb, dim=0)
+        emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
         return emb_cat[0] if single else emb_cat
 
     def encode_bool(self, in_bool, eval_mode=True, batch_size = 1):
@@ -80,10 +80,10 @@ class DualSiglip2Model(nn.Module):
                 batch = in_bool[i : i + batch_size]
                 tok = self.tokenize(batch)
                 out = self.encoder_bool(**tok).pooler_output
-                emb = out / out.norm(p=2, dim=-1, keepdim=True)
-                all_emb.append(emb)
+                all_emb.append(out)
 
         emb_cat = torch.cat(all_emb, dim=0)
+        emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
         return emb_cat[0] if single else emb_cat
 
     def siglip_loss(self, logits):
