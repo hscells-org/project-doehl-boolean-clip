@@ -35,13 +35,15 @@ class DualSiglip2Model(nn.Module):
     def forward(self, in_bool, in_text, return_loss=True):
         out_bool = self.encode_bool(in_bool, eval_mode=not return_loss)
         out_text = self.encode_text(in_text, eval_mode=not return_loss)
-        logits = out_bool @ out_text.t()  # + self.bias
+        logits = self.get_similarities(out_bool, out_text)  # + self.bias
         if return_loss:
             match self.loss_type:
                 case "siglip": loss = self.siglip_loss(logits)
                 case "clip": loss = clip_loss(logits)
         else: loss = None
         return {"loss": loss, "logits": logits}
+
+    def get_similarities(self, a, b): return torch.tensor(a) @ torch.tensor(b).t()
 
     def encode_text(self, in_text, batch_size=1, eval_mode=True):
         single = False
