@@ -33,19 +33,60 @@ class DualSiglip2Model(nn.Module):
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
     def forward(self, in_bool, in_text, return_loss=True):
-        tok_bool = self.tokenize(in_bool)
-        tok_text = self.tokenize(in_text)
-        out_bool = self.encoder_bool(**tok_bool).pooler_output
-        out_text = self.encoder_text(**tok_text).pooler_output
-        out_bool = out_bool / out_bool.norm(p=2, dim=-1, keepdim=True)
-        out_text = out_text / out_text.norm(p=2, dim=-1, keepdim=True)
-        logits = out_bool @ out_text.t()  # + self.bias
+        out_bool = self.encode_bool(in_bool, eval_mode=not return_loss)
+        out_text = self.encode_text(in_text, eval_mode=not return_loss)
+        logits = self.get_similarities(out_bool, out_text)  # + self.bias
         if return_loss:
             match self.loss_type:
                 case "siglip": loss = self.siglip_loss(logits)
                 case "clip": loss = clip_loss(logits)
         else: loss = None
         return {"loss": loss, "logits": logits}
+
+    def get_similarities(self, a, b): return torch.tensor(a) @ torch.tensor(b).t()
+
+    def encode_text(self, in_text, batch_size=1, eval_mode=True):
+        single = False
+        if isinstance(in_text, str):
+            in_text = [in_text]
+            single = True
+
+        if eval_mode: self.encoder_text.eval()
+        context = torch.no_grad() if eval_mode else torch.enable_grad()
+
+        all_emb = []
+        with context:
+            for i in range(0, len(in_text), batch_size):
+                batch = in_text[i : i + batch_size]
+                tok = self.tokenize(batch)
+                out = self.encoder_text(**tok).pooler_output
+                all_emb.append(out)
+
+        emb_cat = torch.cat(all_emb, dim=0)
+        emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
+        return emb_cat[0] if single else emb_cat
+
+    def encode_bool(self, in_bool, eval_mode=True, batch_size = 1):
+        single = False
+        if isinstance(in_bool, str):
+            in_bool = [in_bool]
+            single = True
+            single = True
+
+        if eval_mode: self.encoder_text.eval()
+        context = torch.no_grad() if eval_mode else torch.enable_grad()
+
+        all_emb = []
+        with context:
+            for i in range(0, len(in_bool), batch_size):
+                batch = in_bool[i : i + batch_size]
+                tok = self.tokenize(batch)
+                out = self.encoder_bool(**tok).pooler_output
+                all_emb.append(out)
+
+        emb_cat = torch.cat(all_emb, dim=0)
+        emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
+        return emb_cat[0] if single else emb_cat
 
     def siglip_loss(self, logits):
         sim = logits + self.bias
