@@ -40,14 +40,10 @@ um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
 trans = um_reducer.fit_transform(embeddings)
 df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
-cut = 60
-df["nl"] = df["nl_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
-df["bool"] = df["bool_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
-
 unique_sources = df['source'].unique()
 color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
 
-app = Dash(__name__)
+app = Dash("Visualizer", title="Embedding Visualizer")
 app.layout = app_helper.layout
 
 @callback(
@@ -85,8 +81,11 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         top_n = (-similarity).argsort()[:topk]
         mask[top_n] = 0.9
 
-    fig = go.Figure()
+    cut = 60
+    df["nl"] = df["nl_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
+    df["bool"] = df["bool_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
 
+    fig = go.Figure()
     for src in df['source'].unique():
         src_mask = df['source'] == src
         fig.add_trace(go.Scatter(
