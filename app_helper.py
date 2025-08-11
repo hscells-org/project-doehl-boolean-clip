@@ -1,7 +1,7 @@
 from dash import html, dcc
 
 header = html.H1(
-    "Embedding Visualization Dashboard",
+    "Embedding Visualization",
     style={
         'textAlign': 'center',
         'marginBottom': '20px',
@@ -33,7 +33,7 @@ query_controls = html.Div(
             id='query-dropdown',
             placeholder="Or select a query...",
             style={
-                'width': '60%',
+                'width': '100%',
                 'fontSize': '16px'
             }
         )
@@ -51,14 +51,16 @@ settings_controls = html.Div(
     children=[
         html.Div([
             html.Label("Top K matches", style={'fontWeight': 'bold'}),
-            dcc.Input(
-                id='top-k',
-                type='number',
-                min=1,
-                max=1000,
-                value=100,
-                step=1,
-                style={'width': '100px', 'textAlign': 'center'}
+            html.Div(
+                dcc.Input(
+                    id='top-k',
+                    type='number',
+                    min=1,
+                    max=1000,
+                    value=100,
+                    step=1,
+                    style={'width': '80px', 'textAlign': 'center', 'margin': '5 auto'}
+                )
             )
         ]),
         html.Div([
@@ -70,6 +72,21 @@ settings_controls = html.Div(
                     max=0.2,
                     step=0.01,
                     value=0.05,
+                    marks={0: '0', 0.1: '0.1', 0.2: '0.2'},
+                    tooltip={"placement": "bottom", "always_visible": False}
+                ),
+                style={'width': '200px', 'margin': '0 auto'}
+            )
+        ]),
+        html.Div([
+            html.Label("Default opacity", style={'fontWeight': 'bold'}),
+            html.Div(
+                dcc.Slider(
+                    id='default-opacity',
+                    min=0,
+                    max=1,
+                    step=0.01,
+                    value=0.3,
                     marks={0: '0', 0.5: '0.5', 1: '1'},
                     tooltip={"placement": "bottom", "always_visible": False}
                 ),

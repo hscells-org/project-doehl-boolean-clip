@@ -9,8 +9,7 @@ import numpy as np
 import app_helper
 from utils.boolrank import DualSiglip2Model
 
-df = None
-dataset = None
+seed = 0
 
 paths = [
     "data/training.jsonl",
@@ -20,7 +19,9 @@ paths = [
 model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
 model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
 
+df = None
 dataset = []
+
 for path in paths:
     df = pd.read_json(path, lines=True)
     dataset.append(df)
@@ -28,7 +29,7 @@ dataset = pd.concat(dataset)
 dataset = dataset[dataset["nl_query"] != ""]
 
 N = 1000
-df = dataset.sample(min(N, dataset.shape[0])).reset_index(drop=True)
+df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
 
 print("Calculating embeddings")
 embeddings = model.encode_bool(df["bool_query"].tolist(), batch_size=200).detach().cpu().numpy()
@@ -62,10 +63,11 @@ def update_dropdown(_):
         Input('manual-query', 'value'),
         Input('query-dropdown', 'value'),
         Input('top-k', 'value'),
-        Input('non-match-opacity', 'value')
+        Input('non-match-opacity', 'value'),
+        Input('default-opacity', 'value')
     ]
 )
-def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity):
+def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity):
     query = None
     if manual_query and manual_query.strip():
         query = manual_query.strip()
@@ -75,31 +77,44 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity):
         query = None
 
     if not query:
-        fig = go.Figure(go.Scatter(
-            x=df.x,
-            y=df.y,
+        mask = np.full(len(df), default_opacity)
+    else:
+        query_emb = model.encode_text(query).detach().cpu().numpy()
+        similarity = model.get_similarities(embeddings, query_emb).numpy()
+        mask = np.full_like(similarity, nonmatch_opacity)
+        top_n = (-similarity).argsort()[:topk]
+        mask[top_n] = 0.9
+
+    fig = go.Figure()
+
+    for src in df['source'].unique():
+        src_mask = df['source'] == src
+        fig.add_trace(go.Scatter(
+            x=df.loc[src_mask, 'x'],
+            y=df.loc[src_mask, 'y'],
             mode='markers',
-            marker=dict(opacity=0.3),
-            hovertext=df["bool"]
+            name=str(src),
+            marker=dict(
+                color=color_map[src],
+                opacity=mask[src_mask]
+            ),
+            hovertemplate=(
+                "<b>Natural Query:</b> %{customdata[0]}<br>"
+                "<b>Boolean Query:</b> %{customdata[1]}<br>"
+                "<b>Source:</b> %{customdata[2]}<extra></extra>"
+            ),
+            customdata=np.stack((
+                df.loc[src_mask, "nl"],
+                df.loc[src_mask, "bool"],
+                df.loc[src_mask, "source"]
+            ), axis=-1)
         ))
-        fig.update_layout(width=1100, height=800)
-        return fig
 
-    query_emb = model.encode_text(query).detach().cpu().numpy()
-    similarity = model.get_similarities(embeddings, query_emb).numpy()
-
-    mask = np.full_like(similarity, nonmatch_opacity)
-    top_n = (-similarity).argsort()[:topk]
-    mask[top_n] = 0.9
-
-    fig = go.Figure(go.Scatter(
-        x=df.x,
-        y=df.y,
-        mode='markers',
-        marker=dict(opacity=mask),
-        hovertext=df["bool"]
-    ))
-    fig.update_layout(width=1100, height=800)
+    fig.update_layout(
+        width=1100,
+        height=800,
+        legend_title_text="Source"
+    )
     return fig
 
 if __name__ == '__main__':
