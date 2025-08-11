@@ -3,9 +3,10 @@ from datasets import Dataset, DatasetDict
 from sklearn.model_selection import train_test_split
 import os
 import json
-from deduplication import remove_similar_jaccard, similar_factor
 import numpy as np
 from tqdm import tqdm
+
+from deduplication import remove_similar_jaccard, similar_factor
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,

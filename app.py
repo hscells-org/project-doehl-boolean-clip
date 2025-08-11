@@ -2,10 +2,12 @@ import pandas as pd
 import torch
 import umap
 from dash import Dash, html, dcc, callback, Output, Input
-from boolrank import DualSiglip2Model
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+
+import app_helper
+from utils.boolrank import DualSiglip2Model
 
 df = None
 dataset = None
@@ -33,7 +35,7 @@ embeddings = model.encode_bool(df["bool_query"].tolist(), batch_size=200).detach
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
-um_reducer = umap.UMAP(n_neighbors=15, n_components=2)
+um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
 trans = um_reducer.fit_transform(embeddings)
 df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
@@ -41,7 +43,12 @@ cut = 60
 df["nl"] = df["nl_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
 df["bool"] = df["bool_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
 
+unique_sources = df['source'].unique()
+color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
+
 app = Dash(__name__)
+app.layout = app_helper.layout
+
 @callback(
     Output('query-dropdown', 'options'),
     Input('query-dropdown', 'value')
@@ -49,18 +56,7 @@ app = Dash(__name__)
 def update_dropdown(_):
     return [{"label": q, "value": q} for q in dataset[:50]["nl_query"]]
 
-unique_sources = df['source'].unique()
-color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
-
-app.layout = html.Div([
-    html.H1("Embedding Visualization Dashboard", style={'textAlign': 'center'}),
-    dcc.Input(id='manual-query', placeholder="Type your query here...", style={'width': '60%', 'marginBottom': '10px'}),
-    dcc.Dropdown(id='query-dropdown', placeholder="Or select a query..."),
-    dcc.Graph(id='embedding-graph', style={"height": "800px"})
-])
-
-
-@app.callback(
+@callback(
     Output('embedding-graph', 'figure'),
     [Input('manual-query', 'value'),
      Input('query-dropdown', 'value')]
@@ -81,7 +77,7 @@ def update_figure(manual_query, dropdown_query):
             marker=dict(opacity=0.3),
             hovertext=df["bool"]
         ))
-        fig.update_layout(width=1000, height=700)
+        fig.update_layout(width=1100, height=800)
         return fig
 
     query_emb = model.encode_text(query).detach().cpu().numpy()
@@ -98,8 +94,8 @@ def update_figure(manual_query, dropdown_query):
         marker=dict(opacity=mask),
         hovertext=df["bool"]
     ))
-    fig.update_layout(width=1000, height=700)
+    fig.update_layout(width=1100, height=800)
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False, dev_tools_hot_reload=False)
+    app.run(debug=True, use_reloader=False)
