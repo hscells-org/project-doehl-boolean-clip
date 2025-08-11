@@ -29,8 +29,10 @@ settings_controls = html.Div(
     children=[
         html.Div([
             html.Label("Top K matches", style={'fontWeight': 'bold'}),
-            dcc.Input(id='top-k', type='number', min=1, max=1000, value=100, step=1,
-                      style={'width': '80px', 'textAlign': 'center'})
+            html.Div([
+                dcc.Input(id='top-k', type='number', min=1, max=1000, value=100, step=1,
+                        style={'width': '80px', 'textAlign': 'center'})
+            ])
         ]),
         html.Div([
             html.Label("Non-match opacity", style={'fontWeight': 'bold'}),
@@ -45,6 +47,14 @@ settings_controls = html.Div(
             dcc.Slider(
                 id='default-opacity', min=0, max=1, step=0.01, value=0.3,
                 marks={0: '0', 0.5: '0.5', 1: '1'},
+                tooltip={"placement": "bottom", "always_visible": False}
+            )
+        ], style={'width': '200px'}),
+        html.Div([
+            html.Label("Hover char amt.", style={'fontWeight': 'bold'}),
+            dcc.Slider(
+                id='char-amt', min=0, max=200, step=1, value=50,
+                marks={0: '0', 100: '100', 200: '200'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )
         ], style={'width': '200px'})

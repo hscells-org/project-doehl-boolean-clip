@@ -60,10 +60,11 @@ def update_dropdown(_):
         Input('query-dropdown', 'value'),
         Input('top-k', 'value'),
         Input('non-match-opacity', 'value'),
-        Input('default-opacity', 'value')
+        Input('default-opacity', 'value'),
+        Input('char-amt', 'value')
     ]
 )
-def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity):
+def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, char_amt):
     query = None
     if manual_query and manual_query.strip():
         query = manual_query.strip()
@@ -81,9 +82,8 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         top_n = (-similarity).argsort()[:topk]
         mask[top_n] = 0.9
 
-    cut = 60
-    df["nl"] = df["nl_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
-    df["bool"] = df["bool_query"].map(lambda x: x if len(x) < cut else x[:cut] + "...")
+    df["nl"] = df["nl_query"].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    df["bool"] = df["bool_query"].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
 
     fig = go.Figure()
     for src in df['source'].unique():
