@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 import umap
-from dash import Dash, html, dcc, callback, Output, Input
+from dash import Dash, callback, Output, Input
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
@@ -58,16 +58,21 @@ def update_dropdown(_):
 
 @callback(
     Output('embedding-graph', 'figure'),
-    [Input('manual-query', 'value'),
-     Input('query-dropdown', 'value')]
+    [
+        Input('manual-query', 'value'),
+        Input('query-dropdown', 'value'),
+        Input('top-k', 'value'),
+        Input('non-match-opacity', 'value')
+    ]
 )
-def update_figure(manual_query, dropdown_query):
+def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity):
     query = None
     if manual_query and manual_query.strip():
         query = manual_query.strip()
     elif dropdown_query:
         query = dropdown_query
-    if query == "": query = None
+    if query == "":
+        query = None
 
     if not query:
         fig = go.Figure(go.Scatter(
@@ -83,8 +88,8 @@ def update_figure(manual_query, dropdown_query):
     query_emb = model.encode_text(query).detach().cpu().numpy()
     similarity = model.get_similarities(embeddings, query_emb).numpy()
 
-    mask = np.full_like(similarity, 0.01)
-    top_n = (-similarity).argsort()[:100]
+    mask = np.full_like(similarity, nonmatch_opacity)
+    top_n = (-similarity).argsort()[:topk]
     mask[top_n] = 0.9
 
     fig = go.Figure(go.Scatter(
