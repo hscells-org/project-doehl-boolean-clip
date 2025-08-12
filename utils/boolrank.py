@@ -5,8 +5,10 @@ from copy import deepcopy
 from transformers import AutoTokenizer, AutoModel, Siglip2TextModel
 from safetensors.torch import load_file
 from transformers.models.clip.modeling_clip import clip_loss
+from tqdm import tqdm
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 class DualSiglip2Model(nn.Module):
     def __init__(self, model_name="google/siglip2-base-patch16-224", loss_type="siglip"):
@@ -45,7 +47,7 @@ class DualSiglip2Model(nn.Module):
 
     def get_similarities(self, a, b): return torch.tensor(a) @ torch.tensor(b).t()
 
-    def encode_text(self, in_text, batch_size=1, eval_mode=True):
+    def encode_text(self, in_text, batch_size=1, eval_mode=True, verbose=False):
         single = False
         if isinstance(in_text, str):
             in_text = [in_text]
@@ -56,8 +58,8 @@ class DualSiglip2Model(nn.Module):
 
         all_emb = []
         with context:
-            for i in range(0, len(in_text), batch_size):
-                batch = in_text[i : i + batch_size]
+            for i in tqdm(range(0, len(in_text), batch_size), "Embedding", disable=not verbose):
+                batch = in_text[i: i + batch_size]
                 tok = self.tokenize(batch)
                 out = self.encoder_text(**tok).pooler_output
                 all_emb.append(out)
@@ -66,7 +68,7 @@ class DualSiglip2Model(nn.Module):
         emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
         return emb_cat[0] if single else emb_cat
 
-    def encode_bool(self, in_bool, eval_mode=True, batch_size = 1):
+    def encode_bool(self, in_bool, batch_size=1, eval_mode=True, verbose=False):
         single = False
         if isinstance(in_bool, str):
             in_bool = [in_bool]
@@ -78,8 +80,8 @@ class DualSiglip2Model(nn.Module):
 
         all_emb = []
         with context:
-            for i in range(0, len(in_bool), batch_size):
-                batch = in_bool[i : i + batch_size]
+            for i in tqdm(range(0, len(in_bool), batch_size), "Embedding", disable=not verbose):
+                batch = in_bool[i: i + batch_size]
                 tok = self.tokenize(batch)
                 out = self.encoder_bool(**tok).pooler_output
                 all_emb.append(out)
