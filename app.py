@@ -27,7 +27,7 @@ dataset = dataset[dataset[in_key] != ""]
 df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
 
 print("Calculating embeddings")
-embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200).detach().cpu().numpy()
+embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200, verbose=True).detach().cpu().numpy()
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
