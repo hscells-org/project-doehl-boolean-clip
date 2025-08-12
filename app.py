@@ -50,8 +50,8 @@ def build_base_figure(default_opacity):
                 color=color_map[src],
                 opacity=np.full(src_mask.sum(), default_opacity)
             ),
-            hovertemplate="<b>Natural Query:</b> %{customdata[0]}<br>"
-                          "<b>Boolean Query:</b> %{customdata[1]}<br>"
+            hovertemplate="<b>Data in:</b> %{customdata[0]}<br>"
+                          "<b>Data out:</b> %{customdata[1]}<br>"
                           "<b>Source:</b> %{customdata[2]}<extra></extra>",
             customdata=np.stack((
                 df.loc[src_mask, in_key],
