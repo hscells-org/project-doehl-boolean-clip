@@ -117,12 +117,12 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
             query_emb = model.encode_text(query).detach().cpu().numpy()
             similarity = model.get_similarities(embeddings, query_emb).numpy()
             similarities = (-similarity).argsort()
-        mask = np.full_like(similarities, nonmatch_opacity)
+        mask = np.full_like(similarities, nonmatch_opacity, dtype=float)
         top_n = similarities[:topk]
         ranks = np.arange(len(top_n))
         opacities = np.exp(-dropoff_strength * ranks / 10)
         opacities = opacities.round(2)
-        mask[top_n] = opacities
+        mask[top_n] = np.clip(opacities, nonmatch_opacity, 1)
     else:
         mask = np.full(len(df), default_opacity)
 
