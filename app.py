@@ -1,6 +1,5 @@
 from dash import Dash, callback, Output, Input, Patch
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 import numpy as np
 import torch
@@ -36,12 +35,11 @@ um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
 trans = um_reducer.fit_transform(embeddings)
 df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
-unique_sources = df['source'].unique()
-color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
+def cutoffl(cut): lambda x: x if len(x) < cut else x[:cut] + "..."
 def build_base_figure(default_opacity):
     fig = go.Figure()
-    df["data_in"] = df[in_key].map(lambda x: x if len(x) < app_helper.DEFAULT_CHAR_AMT else x[:app_helper.DEFAULT_CHAR_AMT] + "...")
-    df["data_out"] = df[out_key].map(lambda x: x if len(x) < app_helper.DEFAULT_CHAR_AMT else x[:app_helper.DEFAULT_CHAR_AMT] + "...")
+    df["data_in"] = df[in_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
+    df["data_out"] = df[out_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
 
     fig.add_trace(go.Scatter(
         x=df['x'],
@@ -125,8 +123,8 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     patch["data"][0]["marker"]["opacity"] = mask
 
 
-    df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-    df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    df["data_in"] = df[in_key].map(cutoffl(char_amt))
+    df["data_out"] = df[out_key].map(cutoffl(char_amt))
     customdata = np.stack((df["data_in"], df["data_out"]), axis=-1)
     patch["data"][0]["customdata"] = customdata
     return patch
