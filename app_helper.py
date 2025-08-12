@@ -1,5 +1,7 @@
 from dash import html, dcc
 
+DEFAULT_CHAR_AMT = 50
+
 header = html.H1(
     "Embedding Visualization",
     style={'textAlign': 'center', 'marginBottom': '20px', 'color': '#333'}
@@ -63,7 +65,7 @@ settings_controls = html.Div(
         html.Div([
             html.Label("Hover char amt.", style={'fontWeight': 'bold'}),
             dcc.Slider(
-                id='char-amt', min=0, max=200, step=1, value=50,
+                id='char-amt', min=0, max=200, step=1, value=DEFAULT_CHAR_AMT,
                 marks={0: '0', 100: '100', 200: '200'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )

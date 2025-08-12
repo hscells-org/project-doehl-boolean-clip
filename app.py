@@ -22,6 +22,7 @@ paths = [
 model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
 model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
 
+# Embedding script check for model and data path
 dataset = pd.concat([pd.read_json(p, lines=True) for p in paths])
 dataset = dataset[dataset[in_key] != ""]
 df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
@@ -39,26 +40,18 @@ unique_sources = df['source'].unique()
 color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
 def build_base_figure(default_opacity):
     fig = go.Figure()
-    for src in unique_sources:
-        src_mask = df['source'] == src
-        fig.add_trace(go.Scatter(
-            x=df.loc[src_mask, 'x'],
-            y=df.loc[src_mask, 'y'],
-            mode='markers',
-            name=str(src),
-            marker=dict(
-                color=color_map[src],
-                opacity=np.full(src_mask.sum(), default_opacity)
-            ),
-            hovertemplate="<b>Data in:</b> %{customdata[0]}<br>"
-                          "<b>Data out:</b> %{customdata[1]}<br>"
-                          "<b>Source:</b> %{customdata[2]}<extra></extra>",
-            customdata=np.stack((
-                df.loc[src_mask, in_key],
-                df.loc[src_mask, out_key],
-                df.loc[src_mask, "source"]
-            ), axis=-1)
-        ))
+    df["data_in"] = df[in_key].map(lambda x: x if len(x) < app_helper.DEFAULT_CHAR_AMT else x[:app_helper.DEFAULT_CHAR_AMT] + "...")
+    df["data_out"] = df[out_key].map(lambda x: x if len(x) < app_helper.DEFAULT_CHAR_AMT else x[:app_helper.DEFAULT_CHAR_AMT] + "...")
+
+    fig.add_trace(go.Scatter(
+        x=df['x'],
+        y=df['y'],
+        mode='markers',
+        marker=dict(opacity=default_opacity),
+        hovertemplate="<b>Data in:</b> %{customdata[0]}<br>"
+                        "<b>Data out:</b> %{customdata[1]}<br>",
+        customdata=np.stack((df["data_in"],df["data_out"]), axis=-1)
+    ))
     fig.update_layout(width=1100, height=800, legend_title_text="Source")
     return fig
 
@@ -129,20 +122,13 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     last_query = query
 
     patch = Patch()
-    for i, src in enumerate(unique_sources):
-        src_mask = df['source'] == src
-        patch["data"][i]["marker"]["opacity"] = mask[src_mask]
+    patch["data"][0]["marker"]["opacity"] = mask
 
-        src_mask = df['source'] == src
 
-        df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-        df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-        customdata = np.stack((
-            df.loc[src_mask, "data_in"],
-            df.loc[src_mask, "data_out"],
-            df.loc[src_mask, "source"]
-        ), axis=-1)
-        patch["data"][i]["customdata"] = customdata
+    df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    customdata = np.stack((df["data_in"], df["data_out"]), axis=-1)
+    patch["data"][0]["customdata"] = customdata
     return patch
 
 if __name__ == '__main__':
