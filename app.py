@@ -9,8 +9,11 @@ import numpy as np
 import app_helper
 from utils.boolrank import DualSiglip2Model
 
-seed = 0
+in_key = "nl_query"
+out_key = "bool_query"
+N = 1000
 
+seed = 0
 paths = [
     "data/training.jsonl",
     "data/TAR_data.jsonl",
@@ -19,20 +22,17 @@ paths = [
 model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
 model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
 
-df = None
 dataset = []
 
 for path in paths:
-    df = pd.read_json(path, lines=True)
-    dataset.append(df)
+    dataset.append(pd.read_json(path, lines=True))
 dataset = pd.concat(dataset)
 dataset = dataset[dataset["nl_query"] != ""]
 
-N = 1000
 df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
 
 print("Calculating embeddings")
-embeddings = model.encode_bool(df["bool_query"].tolist(), batch_size=200).detach().cpu().numpy()
+embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200).detach().cpu().numpy()
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
@@ -51,8 +51,10 @@ app.layout = app_helper.layout
     Input('query-dropdown', 'value')
 )
 def update_dropdown(_):
-    return [{"label": q, "value": q} for q in dataset[:50]["nl_query"]]
+    return [{"label": q, "value": q} for q in dataset[:50][in_key]]
 
+last_manual_query = None
+last_dropdown_query = None
 @callback(
     Output('embedding-graph', 'figure'),
     [
@@ -65,11 +67,14 @@ def update_dropdown(_):
     ]
 )
 def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, char_amt):
+    global last_dropdown_query, last_manual_query
     query = None
-    if manual_query and manual_query.strip():
+    if manual_query != last_manual_query and manual_query.strip():
         query = manual_query.strip()
-    elif dropdown_query:
+        last_manual_query = query
+    elif dropdown_query != last_dropdown_query:
         query = dropdown_query
+        last_dropdown_query = query
     if query == "":
         query = None
 
@@ -82,8 +87,8 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         top_n = (-similarity).argsort()[:topk]
         mask[top_n] = 0.9
 
-    df["nl"] = df["nl_query"].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-    df["bool"] = df["bool_query"].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+    df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
 
     fig = go.Figure()
     for src in df['source'].unique():
@@ -103,8 +108,8 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
                 "<b>Source:</b> %{customdata[2]}<extra></extra>"
             ),
             customdata=np.stack((
-                df.loc[src_mask, "nl"],
-                df.loc[src_mask, "bool"],
+                df.loc[src_mask, "data_in"],
+                df.loc[src_mask, "data_out"],
                 df.loc[src_mask, "source"]
             ), axis=-1)
         ))

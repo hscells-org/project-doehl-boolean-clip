@@ -12,6 +12,7 @@ query_controls = html.Div(
         dcc.Input(
             id='manual-query',
             placeholder="Type your query here...",
+            debounce=1,
             style={'width': '60%', 'padding': '8px', 'fontSize': '16px',
                    'border': '1px solid #ccc', 'borderRadius': '6px'}
         ),
