@@ -1,10 +1,10 @@
-import pandas as pd
-import torch
-import umap
-from dash import Dash, callback, Output, Input
+from dash import Dash, callback, Output, Input, Patch
 import plotly.graph_objects as go
 import plotly.express as px
+import pandas as pd
 import numpy as np
+import torch
+import umap
 
 import app_helper
 from utils.boolrank import DualSiglip2Model
@@ -13,22 +13,17 @@ in_key = "nl_query"
 out_key = "bool_query"
 N = 1000
 
-seed = 0
 paths = [
     "data/training.jsonl",
     "data/TAR_data.jsonl",
     "data/sysrev_conv.jsonl",
 ]
+
 model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
 model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
 
-dataset = []
-
-for path in paths:
-    dataset.append(pd.read_json(path, lines=True))
-dataset = pd.concat(dataset)
-dataset = dataset[dataset["nl_query"] != ""]
-
+dataset = pd.concat([pd.read_json(p, lines=True) for p in paths])
+dataset = dataset[dataset[in_key] != ""]
 df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
 
 print("Calculating embeddings")
@@ -42,6 +37,32 @@ df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
 unique_sources = df['source'].unique()
 color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
+def build_base_figure(default_opacity):
+    fig = go.Figure()
+    for src in unique_sources:
+        src_mask = df['source'] == src
+        fig.add_trace(go.Scatter(
+            x=df.loc[src_mask, 'x'],
+            y=df.loc[src_mask, 'y'],
+            mode='markers',
+            name=str(src),
+            marker=dict(
+                color=color_map[src],
+                opacity=np.full(src_mask.sum(), default_opacity)
+            ),
+            hovertemplate="<b>Natural Query:</b> %{customdata[0]}<br>"
+                          "<b>Boolean Query:</b> %{customdata[1]}<br>"
+                          "<b>Source:</b> %{customdata[2]}<extra></extra>",
+            customdata=np.stack((
+                df.loc[src_mask, in_key],
+                df.loc[src_mask, out_key],
+                df.loc[src_mask, "source"]
+            ), axis=-1)
+        ))
+    fig.update_layout(width=1100, height=800, legend_title_text="Source")
+    return fig
+
+base_fig = build_base_figure(default_opacity=0.3)
 
 app = Dash("Visualizer", title="Embedding Visualizer")
 app.layout = app_helper.layout
@@ -56,6 +77,8 @@ def update_dropdown(_):
 last_manual_query = None
 last_dropdown_query = None
 last_query = None
+fig_initialized = False
+
 @callback(
     Output('embedding-graph', 'figure'),
     [
@@ -64,14 +87,19 @@ last_query = None
         Input('top-k', 'value'),
         Input('non-match-opacity', 'value'),
         Input('default-opacity', 'value'),
+        Input('dropoff-strength', 'value'),
         Input('char-amt', 'value'),
-        Input('dropoff-strength', 'value')
     ]
 )
-def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, char_amt, dropoff_strength):
-    global last_dropdown_query, last_manual_query, last_query
+def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, dropoff_strength, char_amt):
+    global last_manual_query, last_dropdown_query, last_query, fig_initialized
+
+    if not fig_initialized:
+        fig_initialized = True
+        return base_fig
+
     query = None
-    if manual_query != last_manual_query and manual_query.strip():
+    if manual_query != last_manual_query and manual_query and manual_query.strip():
         query = manual_query.strip()
         last_manual_query = query
     elif dropdown_query != last_dropdown_query:
@@ -80,7 +108,7 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     else:
         query = last_query
     last_query = query
-    if query == "":
+    if not query:
         query = None
 
     if not query:
@@ -90,48 +118,29 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         similarity = model.get_similarities(embeddings, query_emb).numpy()
         mask = np.full_like(similarity, nonmatch_opacity)
         top_n = (-similarity).argsort()[:topk]
-
         if dropoff_strength > 0:
             ranks = np.arange(len(top_n))
-            opacities = 1 * np.exp(-dropoff_strength * ranks / topk)
+            opacities = np.exp(-dropoff_strength * ranks / topk)
         else:
-            opacities = np.full(len(top_n), 1)
-
+            opacities = np.ones(len(top_n))
         mask[top_n] = opacities
 
-    df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-    df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-
-    fig = go.Figure()
-    for src in df['source'].unique():
+    patch = Patch()
+    for i, src in enumerate(unique_sources):
         src_mask = df['source'] == src
-        fig.add_trace(go.Scatter(
-            x=df.loc[src_mask, 'x'],
-            y=df.loc[src_mask, 'y'],
-            mode='markers',
-            name=str(src),
-            marker=dict(
-                color=color_map[src],
-                opacity=mask[src_mask]
-            ),
-            hovertemplate=(
-                "<b>Natural Query:</b> %{customdata[0]}<br>"
-                "<b>Boolean Query:</b> %{customdata[1]}<br>"
-                "<b>Source:</b> %{customdata[2]}<extra></extra>"
-            ),
-            customdata=np.stack((
-                df.loc[src_mask, "data_in"],
-                df.loc[src_mask, "data_out"],
-                df.loc[src_mask, "source"]
-            ), axis=-1)
-        ))
+        patch["data"][i]["marker"]["opacity"] = mask[src_mask]
 
-    fig.update_layout(
-        width=1100,
-        height=800,
-        legend_title_text="Source"
-    )
-    return fig
+        src_mask = df['source'] == src
+
+        df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+        df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
+        customdata = np.stack((
+            df.loc[src_mask, "data_in"],
+            df.loc[src_mask, "data_out"],
+            df.loc[src_mask, "source"]
+        ), axis=-1)
+        patch["data"][i]["customdata"] = customdata
+    return patch
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)
