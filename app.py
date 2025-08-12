@@ -74,13 +74,20 @@ app.layout = app_helper.layout
 def update_dropdown(_):
     return [{"label": q, "value": q} for q in dataset[:50][in_key]]
 
+@callback(
+    Output('embedding-graph', 'figure'),
+    Input('embedding-graph', 'id'),
+    prevent_initial_call='initial_duplicate'
+)
+def init_figure(_):
+    return base_fig
+
 last_manual_query = None
 last_dropdown_query = None
 last_query = None
-fig_initialized = False
-
+similarities = None
 @callback(
-    Output('embedding-graph', 'figure'),
+    Output('embedding-graph', 'figure', allow_duplicate=True),
     [
         Input('manual-query', 'value'),
         Input('query-dropdown', 'value'),
@@ -89,14 +96,11 @@ fig_initialized = False
         Input('default-opacity', 'value'),
         Input('dropoff-strength', 'value'),
         Input('char-amt', 'value'),
-    ]
+    ],
+    prevent_initial_call=True
 )
 def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, dropoff_strength, char_amt):
-    global last_manual_query, last_dropdown_query, last_query, fig_initialized
-
-    if not fig_initialized:
-        fig_initialized = True
-        return base_fig
+    global last_manual_query, last_dropdown_query, last_query, similarities
 
     query = None
     if manual_query != last_manual_query and manual_query and manual_query.strip():
@@ -107,23 +111,22 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         last_dropdown_query = query
     else:
         query = last_query
-    last_query = query
-    if not query:
-        query = None
 
-    if not query:
-        mask = np.full(len(df), default_opacity)
-    else:
-        query_emb = model.encode_text(query).detach().cpu().numpy()
-        similarity = model.get_similarities(embeddings, query_emb).numpy()
-        mask = np.full_like(similarity, nonmatch_opacity)
-        top_n = (-similarity).argsort()[:topk]
-        if dropoff_strength > 0:
-            ranks = np.arange(len(top_n))
-            opacities = np.exp(-dropoff_strength * ranks / topk)
-        else:
-            opacities = np.ones(len(top_n))
+    if query:
+        if query != last_query:
+            query_emb = model.encode_text(query).detach().cpu().numpy()
+            similarity = model.get_similarities(embeddings, query_emb).numpy()
+            similarities = (-similarity).argsort()
+        mask = np.full_like(similarities, nonmatch_opacity)
+        top_n = similarities[:topk]
+        ranks = np.arange(len(top_n))
+        opacities = np.exp(-dropoff_strength * ranks / 10)
+        opacities = opacities.round(2)
         mask[top_n] = opacities
+    else:
+        mask = np.full(len(df), default_opacity)
+
+    last_query = query
 
     patch = Patch()
     for i, src in enumerate(unique_sources):
