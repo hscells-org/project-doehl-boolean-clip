@@ -36,6 +36,14 @@ settings_controls = html.Div(
             ])
         ]),
         html.Div([
+            html.Label("Default opacity", style={'fontWeight': 'bold'}),
+            dcc.Slider(
+                id='default-opacity', min=0, max=1, step=0.01, value=0.3,
+                marks={0: '0', 0.5: '0.5', 1: '1'},
+                tooltip={"placement": "bottom", "always_visible": False}
+            )
+        ], style={'width': '200px'}),
+        html.Div([
             html.Label("Non-match opacity", style={'fontWeight': 'bold'}),
             dcc.Slider(
                 id='non-match-opacity', min=0, max=0.2, step=0.01, value=0.05,
@@ -44,10 +52,11 @@ settings_controls = html.Div(
             )
         ], style={'width': '200px'}),
         html.Div([
-            html.Label("Default opacity", style={'fontWeight': 'bold'}),
+            html.Label("Dropoff strength", style={'fontWeight': 'bold'}),
             dcc.Slider(
-                id='default-opacity', min=0, max=1, step=0.01, value=0.3,
-                marks={0: '0', 0.5: '0.5', 1: '1'},
+                id='dropoff-strength',
+                min=0, max=2, step=0.01, value=0.5,
+                marks={0: '0', 0.5: '0.5', 1: '1', 2: '2'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )
         ], style={'width': '200px'}),
@@ -58,7 +67,7 @@ settings_controls = html.Div(
                 marks={0: '0', 100: '100', 200: '200'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )
-        ], style={'width': '200px'})
+        ], style={'width': '200px'}),
     ]
 )
 

@@ -55,6 +55,7 @@ def update_dropdown(_):
 
 last_manual_query = None
 last_dropdown_query = None
+last_query = None
 @callback(
     Output('embedding-graph', 'figure'),
     [
@@ -63,11 +64,12 @@ last_dropdown_query = None
         Input('top-k', 'value'),
         Input('non-match-opacity', 'value'),
         Input('default-opacity', 'value'),
-        Input('char-amt', 'value')
+        Input('char-amt', 'value'),
+        Input('dropoff-strength', 'value')
     ]
 )
-def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, char_amt):
-    global last_dropdown_query, last_manual_query
+def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, char_amt, dropoff_strength):
+    global last_dropdown_query, last_manual_query, last_query
     query = None
     if manual_query != last_manual_query and manual_query.strip():
         query = manual_query.strip()
@@ -75,6 +77,9 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     elif dropdown_query != last_dropdown_query:
         query = dropdown_query
         last_dropdown_query = query
+    else:
+        query = last_query
+    last_query = query
     if query == "":
         query = None
 
@@ -85,7 +90,14 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
         similarity = model.get_similarities(embeddings, query_emb).numpy()
         mask = np.full_like(similarity, nonmatch_opacity)
         top_n = (-similarity).argsort()[:topk]
-        mask[top_n] = 0.9
+
+        if dropoff_strength > 0:
+            ranks = np.arange(len(top_n))
+            opacities = 1 * np.exp(-dropoff_strength * ranks / topk)
+        else:
+            opacities = np.full(len(top_n), 1)
+
+        mask[top_n] = opacities
 
     df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
     df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
