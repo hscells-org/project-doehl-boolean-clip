@@ -35,7 +35,7 @@ um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
 trans = um_reducer.fit_transform(embeddings)
 df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
-def cutoffl(cut): lambda x: x if len(x) < cut else x[:cut] + "..."
+def cutoffl(cut): return lambda x: x if len(x) < cut else x[:cut] + "..."
 def build_base_figure(default_opacity):
     fig = go.Figure()
     df["data_in"] = df[in_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
