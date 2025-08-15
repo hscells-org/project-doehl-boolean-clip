@@ -8,7 +8,6 @@ from collections import defaultdict
 import pandas as pd
 from IPython.display import display
 from tqdm import tqdm
-# from rbstar import RBMetric, RBRanking
 
 def compute_metrics(eval_pred):
     logits, _ = eval_pred
@@ -204,24 +203,6 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         res[name]["f3_variance"].append(np.sqrt(np.var(group['f3'].values)))
         res[name]["best_rank"].append(new_ranks[-1] / len(tensor))
 
-        # ranking_orig = RBRanking()
-        # for q in queries:
-        #     ranking_orig.append([q])
-
-        # ranking_model = RBRanking()
-        # # zip scores with queries, sort highest first
-        # for score, q in sorted(zip(tensor.tolist(), queries),
-        #                        key=lambda x: -x[0]):
-        #     ranking_model.append([q])
-        # metric._observation = ranking_orig
-        # metric._reference = ranking_model
-        # lb, ub = metric.rb_overlap()
-        # rbo_avg = (lb + ub) / 2
-
-        # res[name]["rbo_lb"].append(lb)
-        # res[name]["rbo_ub"].append(ub)
-        # res[name]["rbo"].append(rbo_avg)
-
     df = pd.DataFrame({
         main_name: list(res.keys()),
         "spearman": [np.mean(m["spearman"]) for m in res.values()],
@@ -231,7 +212,6 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()],
         "best_rank": [np.mean(m["best_rank"]) for m in res.values()],
         # "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
-        # "rbo": [np.mean(m["rbo"]) for m in res.values()],
     })
 
     avg_row = df.mean(numeric_only=True)
@@ -259,3 +239,4 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
     # display(HTML(styled.to_html()))
     df = df.round(4)
     display(df)
+

@@ -1,6 +1,5 @@
 from dash import Dash, callback, Output, Input, Patch
 import plotly.graph_objects as go
-import pandas as pd
 import numpy as np
 import torch
 import umap
@@ -8,9 +7,10 @@ import umap
 import app_helper
 from utils.boolrank import DualSiglip2Model
 
+# -------- Adjust data and models ----------
 in_key = "nl_query"
 out_key = "bool_query"
-N = 1000
+N = 100000
 
 paths = [
     "data/training.jsonl",
@@ -18,16 +18,15 @@ paths = [
     "data/sysrev_conv.jsonl",
 ]
 
-model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
-model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
+model_name = 'BAAI/bge-small-en-v1.5'
+model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
 
-# Embedding script check for model and data path
-dataset = pd.concat([pd.read_json(p, lines=True) for p in paths])
-dataset = dataset[dataset[in_key] != ""]
-df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
+model = DualSiglip2Model(model_name)
+model.load(model_path)
+# -------------------------------------------
 
-print("Calculating embeddings")
-embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200, verbose=True).detach().cpu().numpy()
+# can be run separately for caching
+df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, N)
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
@@ -37,7 +36,7 @@ df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
 def cutoffl(cut): return lambda x: x if len(x) < cut else x[:cut] + "..."
 def build_base_figure(default_opacity):
-    fig = go.Figure()
+    fig = go.Figure(layout_title_text=f"Data points: {len(df)}")
     df["data_in"] = df[in_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
     df["data_out"] = df[out_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
 
@@ -63,7 +62,7 @@ app.layout = app_helper.layout
     Input('query-dropdown', 'value')
 )
 def update_dropdown(_):
-    return [{"label": q, "value": q} for q in dataset[:50][in_key]]
+    return [{"label": q, "value": q} for q in df[:50][in_key]]
 
 @callback(
     Output('embedding-graph', 'figure'),

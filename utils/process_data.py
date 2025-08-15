@@ -41,6 +41,7 @@ class PubmedQueries:
                     self.bool_key: x["query"],
                     "source": source,
                     "quality": quality,
+                    'mission_hash': x["mission_hash"],
                 }
         items = [a for a in chain(
             process_logs("./data/2022-searchrefiner.log.jsonl"),

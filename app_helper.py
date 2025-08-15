@@ -1,6 +1,42 @@
 from dash import html, dcc
+import os
+import hashlib
+import pickle
+import pandas as pd
+import torch
 
 DEFAULT_CHAR_AMT = 50
+
+def get_cache_path(model_name, paths):
+    h = hashlib.sha256()
+    h.update(model_name.encode("utf-8"))
+    for p in paths:
+        h.update(str(os.path.getmtime(p)).encode("utf-8"))
+        h.update(str(os.path.getsize(p)).encode("utf-8"))
+    return os.path.join("cache", f"embeddings_{h.hexdigest()[:16]}.pkl")
+
+def load_or_create_embeddings(model, data_paths, in_key, out_key, data_amount=None):
+    os.makedirs("cache", exist_ok=True)
+    cache_file = get_cache_path(model.model_name, data_paths)
+
+    if os.path.exists(cache_file):
+        print(f"Loading cached embeddings from {cache_file}")
+        with open(cache_file, "rb") as f:
+            df, embeddings = pickle.load(f)
+    else:
+        print("Loading dataset and computing embeddings...")
+        dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
+        df = dataset[dataset[in_key] != ""]
+        if data_amount is not None:
+            df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
+
+        embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200, verbose=True).detach().cpu().numpy()
+        torch.cuda.empty_cache()
+
+        with open(cache_file, "wb") as f:
+            pickle.dump((df, embeddings), f)
+
+    return df, embeddings
 
 header = html.H1(
     "Embedding Visualization",

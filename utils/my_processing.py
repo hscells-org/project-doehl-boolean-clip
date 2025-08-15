@@ -6,14 +6,15 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-from deduplication import remove_similar_jaccard, similar_factor
+from utils.deduplication import remove_similar_jaccard, similar_factor
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
                      test_only_sources: list = [],
                      train_sources = [],
                      train_batch = 2,
-                     eval_batch = 30):
+                     eval_batch = 30,
+                     test_only = False):
     def ensure_list(v): return [v] if isinstance(v, str) else v
     paths = ensure_list(paths)
 
@@ -49,13 +50,14 @@ def paths_to_dataset(paths: str|list[str],
             df = pd.concat([df, df.iloc[np.arange(eval_batch - excess)]])
         test_dfs[i] = (source, df)
 
-    # scale for similar data
-    train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
-    train_dataset = Dataset.from_pandas(train_df)
+    if not test_only:
+        # scale for similar data
+        train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
+        train_dataset = Dataset.from_pandas(train_df)
     test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
 
     dataset_dict = DatasetDict({
-        "train": train_dataset,
+        "train": train_dataset if not test_only else [],
         "test": test_datasets
     })
     return dataset_dict
