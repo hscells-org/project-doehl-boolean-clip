@@ -130,14 +130,16 @@ class PubmedQueries:
 
         # Fetch summaries for all found PMIDs
         bs = 1000
-        pmids = [int(r['pmid']) for r in results]
+        pmids = [r['pmid'] for r in results]
         if pmids:
             for i in range(0, len(pmids), bs):
                 try:
                     handle = Entrez.esummary(db="pubmed", id=','.join(pmids[i:i+bs]))
                     summaries = list(Entrez.parse(handle))
                     handle.close()
-                except: continue
+                except Exception as e:
+                    print(f"Error searching batch '{i} - {i+bs}': {e}")
+                    continue
 
                 # Merge summaries into results
                 pmid_to_summary = {rec['Id']: rec for rec in summaries}
