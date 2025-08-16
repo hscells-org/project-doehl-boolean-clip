@@ -7,9 +7,10 @@ import torch
 
 DEFAULT_CHAR_AMT = 50
 
-def get_cache_path(model_name, paths):
+def get_cache_path(model_name: str, paths: list[str], amount):
     h = hashlib.sha256()
     h.update(model_name.encode("utf-8"))
+    h.update(str(amount).encode("utf-8"))
     for p in paths:
         h.update(str(os.path.getmtime(p)).encode("utf-8"))
         h.update(str(os.path.getsize(p)).encode("utf-8"))
@@ -17,7 +18,7 @@ def get_cache_path(model_name, paths):
 
 def load_or_create_embeddings(model, data_paths, in_key, out_key, data_amount=None):
     os.makedirs("cache", exist_ok=True)
-    cache_file = get_cache_path(model.model_name, data_paths)
+    cache_file = get_cache_path(model.model_name, data_paths, data_amount)
 
     if os.path.exists(cache_file):
         print(f"Loading cached embeddings from {cache_file}")
@@ -93,7 +94,7 @@ settings_controls = html.Div(
             html.Label("Dropoff strength", style={'fontWeight': 'bold'}),
             dcc.Slider(
                 id='dropoff-strength',
-                min=0, max=2, step=0.01, value=0.5,
+                min=0, max=2, step=0.01, value=0.0,
                 marks={0: '0', 0.5: '0.5', 1: '1', 2: '2'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )

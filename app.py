@@ -10,7 +10,7 @@ from utils.boolrank import DualSiglip2Model
 # -------- Adjust data and models ----------
 in_key = "nl_query"
 out_key = "bool_query"
-N = 100000
+N = 10000
 
 paths = [
     "data/training.jsonl",
