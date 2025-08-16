@@ -144,7 +144,7 @@ class PubmedQueries:
 
                 # Merge summaries into results
                 pmid_to_summary = {rec['Id']: rec for rec in summaries}
-                for r in results:
+                for r in results[i:i+bs]:
                     summary = pmid_to_summary.get(r['pmid'], {})
                     r['nl_query'] = summary.get('Title', '')
                     r['source'] = 'pubmed-query'
