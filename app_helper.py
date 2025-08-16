@@ -17,25 +17,27 @@ def get_cache_path(model_name: str, paths: list[str], amount):
     return os.path.join("cache", f"embeddings_{h.hexdigest()[:16]}.pkl")
 
 def load_or_create_embeddings(model, data_paths, in_key, out_key, data_amount=None):
+    dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
+    df = dataset[dataset[in_key] != ""]
+    df = df[df["mission_hash"].isna() | ~df["mission_hash"].duplicated(keep='last')]
+    if data_amount is not None:
+        df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
+
     os.makedirs("cache", exist_ok=True)
     cache_file = get_cache_path(model.model_name, data_paths, data_amount)
 
     if os.path.exists(cache_file):
         print(f"Loading cached embeddings from {cache_file}")
         with open(cache_file, "rb") as f:
-            df, embeddings = pickle.load(f)
+            embeddings = pickle.load(f)
     else:
-        print("Loading dataset and computing embeddings...")
-        dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
-        df = dataset[dataset[in_key] != ""]
-        if data_amount is not None:
-            df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
+        print("Computing embeddings...")
 
         embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200, verbose=True).detach().cpu().numpy()
         torch.cuda.empty_cache()
 
         with open(cache_file, "wb") as f:
-            pickle.dump((df, embeddings), f)
+            pickle.dump(embeddings, f)
 
     return df, embeddings
 
