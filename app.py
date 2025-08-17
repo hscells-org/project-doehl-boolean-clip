@@ -19,14 +19,16 @@ paths = [
 ]
 
 model_name = 'BAAI/bge-small-en-v1.5'
-model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
+# model_name = 'dmis-lab/biobert-v1.1'
+model_path = None
+# model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
 
 model = DualSiglip2Model(model_name)
-model.load(model_path)
+if model_path: model.load(model_path)
 # -------------------------------------------
 
 # can be run separately for caching
-df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, N)
+df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N)
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
