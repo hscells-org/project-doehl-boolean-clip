@@ -119,8 +119,22 @@ graph_section = dcc.Graph(
            'borderRadius': '8px', 'padding': '5px', 'backgroundColor': '#fafafa'}
 )
 
+topk_section = html.Div(
+    id="topk-list",
+    style={
+        "maxHeight": "300px",
+        "overflowY": "auto",
+        "marginTop": "20px",
+        "textAlign": "left",
+        "border": "1px solid #ddd",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "backgroundColor": "#fff"
+    }
+)
+
 layout = html.Div(
     style={'maxWidth': '1100px', 'margin': '0 auto', 'padding': '20px',
            'fontFamily': 'Arial, sans-serif', 'textAlign': 'center'},
-    children=[header, query_controls, settings_controls, graph_section]
+    children=[header, query_controls, settings_controls, graph_section, topk_section]
 )

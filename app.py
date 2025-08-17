@@ -1,4 +1,4 @@
-from dash import Dash, callback, Output, Input, Patch
+from dash import Dash, callback, Output, Input, Patch, html
 import plotly.graph_objects as go
 import numpy as np
 import torch
@@ -80,6 +80,7 @@ last_query = None
 similarities = None
 @callback(
     Output('embedding-graph', 'figure', allow_duplicate=True),
+    Output('topk-list', 'children'),
     [
         Input('manual-query', 'value'),
         Input('query-dropdown', 'value'),
@@ -128,7 +129,18 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     df["data_out"] = df[out_key].map(cutoffl(char_amt))
     customdata = np.stack((df["data_in"], df["data_out"]), axis=-1)
     patch["data"][0]["customdata"] = customdata
-    return patch
+
+    topk_items = []
+    for idx in top_n:
+        topk_items.append(html.Div(
+            id={"type": "topk-item", "index": int(idx)},
+            children=[
+                html.B("Input: "), df.iloc[idx][in_key], html.Br(),
+                html.B("Output: "), df.iloc[idx][out_key], html.Hr()
+            ],
+            style={"padding": "6px", "cursor": "pointer"}
+        ))
+    return patch, topk_items
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)
