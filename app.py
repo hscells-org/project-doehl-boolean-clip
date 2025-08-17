@@ -1,4 +1,4 @@
-from dash import Dash, callback, Output, Input, Patch, html
+from dash import Dash, callback, Output, Input, Patch, html, MATCH, ALL, callback_context, no_update
 import plotly.graph_objects as go
 import numpy as np
 import torch
@@ -8,6 +8,8 @@ import app_helper
 from utils.boolrank import DualSiglip2Model
 
 # -------- Adjust data and models ----------
+MARKER_SIZE = 6
+MARKER_HIGHLIGHT_SIZE = 12
 in_key = "nl_query"
 out_key = "bool_query"
 N = 10000
@@ -59,12 +61,14 @@ base_fig = build_base_figure(default_opacity=0.3)
 app = Dash("Visualizer", title="Embedding Visualizer")
 app.layout = app_helper.layout
 
+
 @callback(
     Output('query-dropdown', 'options'),
     Input('query-dropdown', 'value')
 )
 def update_dropdown(_):
     return [{"label": q, "value": q} for q in df[:50][in_key]]
+
 
 @callback(
     Output('embedding-graph', 'figure'),
@@ -73,6 +77,24 @@ def update_dropdown(_):
 )
 def init_figure(_):
     return base_fig
+
+
+@callback(
+    Output("embedding-graph", "figure", allow_duplicate=True),
+    Input({"type": "topk-item", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def focus_point(clicks):
+    ctx = callback_context
+    if not ctx.triggered: return no_update
+    triggered_id = ctx.triggered_id
+    if not triggered_id: return no_update
+
+    idx = triggered_id["index"]
+    patch = Patch()
+    patch["data"][0]["marker"]["size"] = [MARKER_HIGHLIGHT_SIZE if i == idx else MARKER_SIZE for i in range(len(df))]
+    return patch
+
 
 last_manual_query = None
 last_dropdown_query = None
@@ -124,19 +146,20 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     patch = Patch()
     patch["data"][0]["marker"]["opacity"] = mask
 
-
-    df["data_in"] = df[in_key].map(cutoffl(char_amt))
-    df["data_out"] = df[out_key].map(cutoffl(char_amt))
+    cutoff_fun = cutoffl(char_amt)
+    df["data_in"] = df[in_key].map(cutoff_fun)
+    df["data_out"] = df[out_key].map(cutoff_fun)
     customdata = np.stack((df["data_in"], df["data_out"]), axis=-1)
     patch["data"][0]["customdata"] = customdata
 
     topk_items = []
-    for idx in top_n:
+    for rank, idx in enumerate(top_n):
         topk_items.append(html.Div(
             id={"type": "topk-item", "index": int(idx)},
             children=[
-                html.B("Input: "), df.iloc[idx][in_key], html.Br(),
-                html.B("Output: "), df.iloc[idx][out_key], html.Hr()
+                html.B(f"Rank: {rank + 1}"), html.Br(),
+                html.B("Input: "), cutoff_fun(df.iloc[idx][in_key]), html.Br(),
+                html.B("Output: "), cutoff_fun(df.iloc[idx][out_key]), html.Hr()
             ],
             style={"padding": "6px", "cursor": "pointer"}
         ))
