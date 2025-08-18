@@ -96,6 +96,19 @@ def focus_point(clicks):
     return patch
 
 
+@callback(
+    Output('manual-query', 'value'),
+    Input('embedding-graph', 'clickData'),
+    prevent_initial_call=True
+)
+def use_point_as_query(clickData):
+    if not clickData: return no_update
+
+    point = clickData['points'][0]
+    data = df.iloc[point["pointIndex"]]
+    return data["nl_query"]
+
+
 last_manual_query = None
 last_dropdown_query = None
 last_query = None
