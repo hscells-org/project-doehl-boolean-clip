@@ -10,7 +10,7 @@ from tqdm import tqdm
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class DualSiglip2Model(nn.Module):
+class DualEncoderModel(nn.Module):
     def __init__(self, model_name="google/siglip2-base-patch16-224", loss_type="siglip"):
         super().__init__()
         self.model_name = model_name
@@ -28,9 +28,6 @@ class DualSiglip2Model(nn.Module):
         if "siglip" in self.model_name:
             return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt", max_length=64).to(device)
         else:
-            # try:
-            #     return self.tokenizer(texts, padding="max_length", truncation=True, return_tensors="pt").to(device)
-            # except:
             return self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512).to(device)
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip2/modeling_siglip2.py#L952
@@ -45,50 +42,36 @@ class DualSiglip2Model(nn.Module):
         else: loss = None
         return {"loss": loss, "logits": logits}
 
-    def get_similarities(self, a, b): return torch.tensor(a) @ torch.tensor(b).t()
+    def get_similarities(self, a, b):
+        return torch.matmul(a, torch.transpose(b, 0, 1))
 
-    def encode_text(self, in_text, batch_size=1, eval_mode=True, verbose=False):
+    def encode(self, inputs, encoder, batch_size=1, eval_mode=True, verbose=False):
         single = False
-        if isinstance(in_text, str):
-            in_text = [in_text]
+        if isinstance(inputs, str):
+            inputs = [inputs]
             single = True
 
-        if eval_mode: self.encoder_text.eval()
+        if eval_mode:
+            encoder.eval()
         context = torch.no_grad() if eval_mode else torch.enable_grad()
 
         all_emb = []
         with context:
-            for i in tqdm(range(0, len(in_text), batch_size), "Embedding", disable=not verbose):
-                batch = in_text[i: i + batch_size]
+            for i in tqdm(range(0, len(inputs), batch_size), "Embedding", disable=not verbose):
+                batch = inputs[i: i + batch_size]
                 tok = self.tokenize(batch)
-                out = self.encoder_text(**tok).pooler_output
+                out = encoder(**tok).pooler_output
                 all_emb.append(out)
 
         emb_cat = torch.cat(all_emb, dim=0)
         emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
         return emb_cat[0] if single else emb_cat
 
-    def encode_bool(self, in_bool, batch_size=1, eval_mode=True, verbose=False):
-        single = False
-        if isinstance(in_bool, str):
-            in_bool = [in_bool]
-            single = True
-            single = True
+    def encode_text(self, inputs, batch_size=1, eval_mode=True, verbose=False):
+        return self.encode(inputs, self.encoder_text, batch_size, eval_mode, verbose)
 
-        if eval_mode: self.encoder_text.eval()
-        context = torch.no_grad() if eval_mode else torch.enable_grad()
-
-        all_emb = []
-        with context:
-            for i in tqdm(range(0, len(in_bool), batch_size), "Embedding", disable=not verbose):
-                batch = in_bool[i: i + batch_size]
-                tok = self.tokenize(batch)
-                out = self.encoder_bool(**tok).pooler_output
-                all_emb.append(out)
-
-        emb_cat = torch.cat(all_emb, dim=0)
-        emb_cat = emb_cat / emb_cat.norm(p=2, dim=-1, keepdim=True)
-        return emb_cat[0] if single else emb_cat
+    def encode_bool(self, inputs, batch_size=1, eval_mode=True, verbose=False):
+        return self.encode(inputs, self.encoder_bool, batch_size, eval_mode, verbose)
 
     def siglip_loss(self, logits):
         sim = logits + self.bias

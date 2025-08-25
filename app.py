@@ -1,11 +1,11 @@
-from dash import Dash, callback, Output, Input, Patch, html, MATCH, ALL, callback_context, no_update
+from dash import Dash, callback, Output, Input, Patch, html, ALL, callback_context, no_update
 import plotly.graph_objects as go
 import numpy as np
 import torch
 import umap
 
 import app_helper
-from utils.boolrank import DualSiglip2Model
+from utils.boolrank import DualEncoderModel
 
 # -------- Adjust data and models ----------
 MARKER_SIZE = 6
@@ -22,10 +22,10 @@ paths = [
 
 model_name = 'BAAI/bge-small-en-v1.5'
 # model_name = 'dmis-lab/biobert-v1.1'
-model_path = None
-# model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
+# model_path = None
+model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
 
-model = DualSiglip2Model(model_name)
+model = DualEncoderModel(model_name)
 if model_path: model.load(model_path)
 # -------------------------------------------
 
