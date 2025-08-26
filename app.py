@@ -143,7 +143,7 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     if query:
         if query != last_query:
             query_emb = model.encode_text(query).detach().cpu().numpy()
-            similarity = model.get_similarities(embeddings, query_emb).numpy()
+            similarity = torch.matmul(torch.tensor(embeddings), torch.tensor(query_emb.T))
             similarities = (-similarity).argsort()
         mask = np.full_like(similarities, nonmatch_opacity, dtype=float)
         top_n = similarities[:topk]
