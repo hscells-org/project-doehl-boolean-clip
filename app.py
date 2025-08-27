@@ -96,17 +96,20 @@ def focus_point(clicks):
     return patch
 
 
+clicked_idx = None
 @callback(
     Output('manual-query', 'value'),
     Input('embedding-graph', 'clickData'),
     prevent_initial_call=True
 )
 def use_point_as_query(clickData):
+    global clicked_idx
     if not clickData: return no_update
 
     point = clickData['points'][0]
-    data = df.iloc[point["pointIndex"]]
-    return data["nl_query"]
+    clicked_idx = point["pointIndex"]
+    data = df.iloc[clicked_idx]
+    return data[in_key]
 
 
 last_manual_query = None
@@ -128,7 +131,7 @@ similarities = None
     prevent_initial_call=True
 )
 def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, dropoff_strength, char_amt):
-    global last_manual_query, last_dropdown_query, last_query, similarities
+    global last_manual_query, last_dropdown_query, last_query, similarities, clicked_idx
 
     query = None
     if manual_query != last_manual_query and manual_query and manual_query.strip():
@@ -157,6 +160,10 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     last_query = query
 
     patch = Patch()
+    if clicked_idx is not None and (manual_query == df.iloc[clicked_idx][in_key]):
+        mask[clicked_idx] = 1.0
+        patch["data"][0]["marker"]["color"] = ['red' if i == clicked_idx else 'blue' for i in range(len(df))]
+
     patch["data"][0]["marker"]["opacity"] = mask
 
     cutoff_fun = cutoffl(char_amt)
@@ -167,7 +174,6 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
 
     topk_items = []
     for rank, idx in enumerate(top_n):
-        print(idx)
         topk_items.append(html.Div(
             id={"type": "topk-item", "index": int(idx)},
             children=[
