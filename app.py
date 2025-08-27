@@ -146,7 +146,7 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
             similarity = torch.matmul(torch.tensor(embeddings), torch.tensor(query_emb.T))
             similarities = (-similarity).argsort()
         mask = np.full_like(similarities, nonmatch_opacity, dtype=float)
-        top_n = similarities[:topk]
+        top_n = similarities[:topk].numpy()
         ranks = np.arange(len(top_n))
         opacities = np.exp(-dropoff_strength * ranks / 10)
         opacities = opacities.round(2)
@@ -167,6 +167,7 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
 
     topk_items = []
     for rank, idx in enumerate(top_n):
+        print(idx)
         topk_items.append(html.Div(
             id={"type": "topk-item", "index": int(idx)},
             children=[
