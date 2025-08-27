@@ -31,11 +31,12 @@ def paths_to_dataset(paths: str|list[str],
             else:
                 test_dfs.append((source, data))
 
-    train_df = pd.concat(train_dfs).reset_index(drop=True)
-    train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
-    # pad with values from the start to make fill batches
-    excess = train_df.shape[0] % train_batch
-    if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
+    if train_dfs:
+        train_df = pd.concat(train_dfs).reset_index(drop=True)
+        train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
+        # pad with values from the start to make fill batches
+        excess = train_df.shape[0] % train_batch
+        if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
 
     for i, (source, df) in tqdm(enumerate(test_dfs), "Removing similar", len(test_dfs)):
         col = 'bool_query'
@@ -50,7 +51,7 @@ def paths_to_dataset(paths: str|list[str],
             df = pd.concat([df, df.iloc[np.arange(eval_batch - excess)]])
         test_dfs[i] = (source, df)
 
-    if not test_only:
+    if not test_only and train_dfs:
         # scale for similar data
         train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
         train_dataset = Dataset.from_pandas(train_df)
