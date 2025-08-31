@@ -20,10 +20,11 @@ paths = [
     "data/sysrev_conv.jsonl",
 ]
 
-model_name = 'BAAI/bge-small-en-v1.5'
-# model_name = 'dmis-lab/biobert-v1.1'
-# model_path = None
-model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
+# model_name = 'BAAI/bge-small-en-v1.5'
+model_name = 'dmis-lab/biobert-v1.1'
+model_path = None
+# model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
+# model_path = r"models\\clip\\bge-small-en-v1.5\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
 
 model = DualEncoderModel(model_name)
 if model_path: model.load(model_path)

@@ -14,7 +14,8 @@ def paths_to_dataset(paths: str|list[str],
                      train_sources = [],
                      train_batch = 2,
                      eval_batch = 30,
-                     test_only = False):
+                     test_only = False,
+                     quality_power = 1):
     def ensure_list(v): return [v] if isinstance(v, str) else v
     paths = ensure_list(paths)
 
@@ -25,7 +26,7 @@ def paths_to_dataset(paths: str|list[str],
         for source, data in df.groupby("source"):
             if source not in test_only_sources:
                 train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
-                train_part['quality'] = train_part['quality'] / train_part.shape[0]
+                train_part['quality'] = (train_part['quality'] ** quality_power) / train_part.shape[0]
                 if source in train_sources: train_dfs.append(train_part)
                 test_dfs.append((source, test_part))
             else:
@@ -33,7 +34,6 @@ def paths_to_dataset(paths: str|list[str],
 
     if train_dfs:
         train_df = pd.concat(train_dfs).reset_index(drop=True)
-        train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
         # pad with values from the start to make fill batches
         excess = train_df.shape[0] % train_batch
         if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
@@ -54,6 +54,8 @@ def paths_to_dataset(paths: str|list[str],
     if not test_only and train_dfs:
         # scale for similar data
         train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
+        # normalize
+        train_df['quality'] = train_df['quality'] / np.max(train_df['quality'])
         train_dataset = Dataset.from_pandas(train_df)
     test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
 

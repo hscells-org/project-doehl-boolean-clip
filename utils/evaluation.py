@@ -9,15 +9,36 @@ import pandas as pd
 from IPython.display import display
 from tqdm import tqdm
 
-def compute_metrics(eval_pred):
-    logits, _ = eval_pred
+def _prepare_intermediates(logits):
     conf = (logits + 1) / 2
     N, M = conf.shape
-    metrics = {}
 
     top_idxs = conf.argsort(axis=1)[:, ::-1]
     true_idxs = np.tile(np.arange(M), math.ceil(N / M))[:N][:, None]
     ranks_pos = np.argmax(top_idxs == true_idxs, axis=1)
+
+    mask = np.tile(np.eye(M, dtype=bool), math.ceil(N / M)).T[:N]
+    conf_pos = conf[mask]
+    conf_neg = conf[~mask]
+    conf_neg = conf_neg[conf_neg >= 0]
+
+    return {
+        "conf": conf,
+        "ranks_pos": ranks_pos,
+        "conf_pos": conf_pos,
+        "conf_neg": conf_neg,
+        "N": N,
+        "M": M
+    }
+
+
+def compute_metrics(eval_pred):
+    logits, _ = eval_pred
+    inter = _prepare_intermediates(logits)
+    _, ranks_pos, conf_pos, conf_neg, N, M = (
+        inter["conf"], inter["ranks_pos"], inter["conf_pos"], inter["conf_neg"], inter["N"], inter["M"]
+    )
+    metrics = {}
 
     ks = [min(2**i, 30) for i in range(6)]
     metrics.update({f"recall@{k}": np.mean(ranks_pos < k) for k in ks})
@@ -31,10 +52,6 @@ def compute_metrics(eval_pred):
     for p in [1, 2, 5, 10, 25, 50]:
         metrics[f"recall@{p}%"] = np.mean(ranks_pos < max(min(N, M) * p / 100, 1))
 
-    mask = np.tile(np.eye(M, dtype=bool), math.ceil(N / M)).T[:N]
-    conf_pos = conf[mask]
-    conf_neg = conf[~mask]
-    conf_neg = conf_neg[conf_neg >= 0]
     y_true = np.concatenate([np.ones_like(conf_pos), np.zeros_like(conf_neg)])
     y_scores = np.concatenate([conf_pos, conf_neg])
 
@@ -58,11 +75,6 @@ def compute_metrics(eval_pred):
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred_best).ravel()
     metrics.update({'tp': int(tp), 'tn': int(tn), 'fp': int(fp), 'fn': int(fn)})
 
-    # also return intermediate arrays for plotting
-    metrics['_conf'] = conf
-    metrics['_ranks_pos'] = ranks_pos
-    metrics['_conf_pos'] = conf_pos
-    metrics['_conf_neg'] = conf_neg
     return metrics
 
 
@@ -87,15 +99,18 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None, batc
 
     logits_all = np.concatenate(logits_list, axis=0)
     metrics = compute_metrics((logits_all, None))
+    inter = _prepare_intermediates(logits_all)
+    ranks_pos, conf_pos, conf_neg = inter["ranks_pos"], inter["conf_pos"], inter["conf_neg"]
+    print(ranks_pos)
+    print("Worst (idx, rank): ", ranks_pos.argmax(), ranks_pos.max())
+    print("Best (idx, rank): ", ranks_pos.argmin(), ranks_pos.min())
+    metrics['logits'] = logits_all
+    thresh = metrics['best_threshold']
 
     if plot:
         bins = 50
-        ranks_pos = metrics['_ranks_pos']
-        conf_pos = metrics['_conf_pos']
-        conf_neg = metrics['_conf_neg']
-        thresh = metrics['best_threshold']
-
         d_pos, d_neg = conf_pos.flatten(), conf_neg.flatten()
+
         def get_hist_height(data):
             return np.histogram(data, bins=bins, range=(0,1))[0].max() / data.size
         pos_height = get_hist_height(d_pos)
@@ -110,7 +125,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None, batc
         ax.hist(conf_pos, bins=bins, range=(0,1), density=density)
         ax.axvline(d_pos.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_pos.mean():.2f}")
-        ax.set_title('Positive Score Distribution')
+        ax.set_title('Positive Similarity Distribution')
         ax.set_ylim((0, ymax))
         ax.legend()
 
@@ -119,7 +134,7 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None, batc
         ax.hist(conf_neg, bins=bins, range=(0,1), density=density)
         ax.axvline(d_neg.mean(), color='red', linestyle='dashed', linewidth=2,
                    label=f"Mean: {d_neg.mean():.2f}")
-        ax.set_title('Negative Score Distribution')
+        ax.set_title('Negative Similarity Distribution')
         ax.set_ylim((0, ymax))
         ax.legend()
 
@@ -155,10 +170,6 @@ def evaluate(model, in_bool, in_text, plot=False, density=True, title=None, batc
 
         metrics['plot2'] = fig
         plt.tight_layout()
-
-    # strip helper arrays before returning
-    for k in ['_conf','_ranks_pos','_conf_pos','_conf_neg']:
-        metrics.pop(k, None)
 
     return metrics
 
