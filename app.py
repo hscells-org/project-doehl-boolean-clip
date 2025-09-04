@@ -1,17 +1,18 @@
-from dash import Dash, callback, Output, Input, Patch
+from dash import Dash, callback, Output, Input, Patch, html, ALL, callback_context, no_update
 import plotly.graph_objects as go
-import plotly.express as px
-import pandas as pd
 import numpy as np
 import torch
 import umap
 
 import app_helper
-from utils.boolrank import DualSiglip2Model
+from utils.boolrank import DualEncoderModel
 
+# -------- Adjust data and models ----------
+MARKER_SIZE = 6
+MARKER_HIGHLIGHT_SIZE = 12
 in_key = "nl_query"
 out_key = "bool_query"
-N = 1000
+N = 10000
 
 paths = [
     "data/training.jsonl",
@@ -19,15 +20,18 @@ paths = [
     "data/sysrev_conv.jsonl",
 ]
 
-model = DualSiglip2Model('BAAI/bge-small-en-v1.5')
-model.load(r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors")
+# model_name = 'BAAI/bge-small-en-v1.5'
+model_name = 'dmis-lab/biobert-v1.1'
+model_path = None
+# model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
+# model_path = r"models\\clip\\bge-small-en-v1.5\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
 
-dataset = pd.concat([pd.read_json(p, lines=True) for p in paths])
-dataset = dataset[dataset[in_key] != ""]
-df = dataset.sample(min(N, dataset.shape[0]), random_state=0).reset_index(drop=True)
+model = DualEncoderModel(model_name)
+if model_path: model.load(model_path)
+# -------------------------------------------
 
-print("Calculating embeddings")
-embeddings = model.encode_bool(df[out_key].tolist(), batch_size=200, verbose=True).detach().cpu().numpy()
+# can be run separately for caching
+df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N)
 torch.cuda.empty_cache()
 
 print("Calculating UMAP")
@@ -35,30 +39,21 @@ um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
 trans = um_reducer.fit_transform(embeddings)
 df["x"], df["y"] = trans[:, 0], trans[:, 1]
 
-unique_sources = df['source'].unique()
-color_map = {src: px.colors.qualitative.Plotly[i % 10] for i, src in enumerate(unique_sources)}
+def cutoffl(cut): return lambda x: x if len(x) < cut else x[:cut] + "..."
 def build_base_figure(default_opacity):
-    fig = go.Figure()
-    for src in unique_sources:
-        src_mask = df['source'] == src
-        fig.add_trace(go.Scatter(
-            x=df.loc[src_mask, 'x'],
-            y=df.loc[src_mask, 'y'],
-            mode='markers',
-            name=str(src),
-            marker=dict(
-                color=color_map[src],
-                opacity=np.full(src_mask.sum(), default_opacity)
-            ),
-            hovertemplate="<b>Data in:</b> %{customdata[0]}<br>"
-                          "<b>Data out:</b> %{customdata[1]}<br>"
-                          "<b>Source:</b> %{customdata[2]}<extra></extra>",
-            customdata=np.stack((
-                df.loc[src_mask, in_key],
-                df.loc[src_mask, out_key],
-                df.loc[src_mask, "source"]
-            ), axis=-1)
-        ))
+    fig = go.Figure(layout_title_text=f"Data points: {len(df)}")
+    df["data_in"] = df[in_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
+    df["data_out"] = df[out_key].map(cutoffl(app_helper.DEFAULT_CHAR_AMT))
+
+    fig.add_trace(go.Scatter(
+        x=df['x'],
+        y=df['y'],
+        mode='markers',
+        marker=dict(opacity=default_opacity),
+        hovertemplate="<b>Data in:</b> %{customdata[0]}<br>"
+                        "<b>Data out:</b> %{customdata[1]}<br>",
+        customdata=np.stack((df["data_in"],df["data_out"]), axis=-1)
+    ))
     fig.update_layout(width=1100, height=800, legend_title_text="Source")
     return fig
 
@@ -67,12 +62,14 @@ base_fig = build_base_figure(default_opacity=0.3)
 app = Dash("Visualizer", title="Embedding Visualizer")
 app.layout = app_helper.layout
 
+
 @callback(
     Output('query-dropdown', 'options'),
     Input('query-dropdown', 'value')
 )
 def update_dropdown(_):
-    return [{"label": q, "value": q} for q in dataset[:50][in_key]]
+    return [{"label": q, "value": q} for q in df[:50][in_key]]
+
 
 @callback(
     Output('embedding-graph', 'figure'),
@@ -82,12 +79,47 @@ def update_dropdown(_):
 def init_figure(_):
     return base_fig
 
+
+@callback(
+    Output("embedding-graph", "figure", allow_duplicate=True),
+    Input({"type": "topk-item", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def focus_point(clicks):
+    ctx = callback_context
+    if not ctx.triggered: return no_update
+    triggered_id = ctx.triggered_id
+    if not triggered_id: return no_update
+
+    idx = triggered_id["index"]
+    patch = Patch()
+    patch["data"][0]["marker"]["size"] = [MARKER_HIGHLIGHT_SIZE if i == idx else MARKER_SIZE for i in range(len(df))]
+    return patch
+
+
+clicked_idx = None
+@callback(
+    Output('manual-query', 'value'),
+    Input('embedding-graph', 'clickData'),
+    prevent_initial_call=True
+)
+def use_point_as_query(clickData):
+    global clicked_idx
+    if not clickData: return no_update
+
+    point = clickData['points'][0]
+    clicked_idx = point["pointIndex"]
+    data = df.iloc[clicked_idx]
+    return data[in_key]
+
+
 last_manual_query = None
 last_dropdown_query = None
 last_query = None
 similarities = None
 @callback(
     Output('embedding-graph', 'figure', allow_duplicate=True),
+    Output('topk-list', 'children'),
     [
         Input('manual-query', 'value'),
         Input('query-dropdown', 'value'),
@@ -100,7 +132,7 @@ similarities = None
     prevent_initial_call=True
 )
 def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_opacity, dropoff_strength, char_amt):
-    global last_manual_query, last_dropdown_query, last_query, similarities
+    global last_manual_query, last_dropdown_query, last_query, similarities, clicked_idx
 
     query = None
     if manual_query != last_manual_query and manual_query and manual_query.strip():
@@ -115,10 +147,10 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     if query:
         if query != last_query:
             query_emb = model.encode_text(query).detach().cpu().numpy()
-            similarity = model.get_similarities(embeddings, query_emb).numpy()
+            similarity = torch.matmul(torch.tensor(embeddings), torch.tensor(query_emb.T))
             similarities = (-similarity).argsort()
         mask = np.full_like(similarities, nonmatch_opacity, dtype=float)
-        top_n = similarities[:topk]
+        top_n = similarities[:topk].numpy()
         ranks = np.arange(len(top_n))
         opacities = np.exp(-dropoff_strength * ranks / 10)
         opacities = opacities.round(2)
@@ -129,21 +161,30 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
     last_query = query
 
     patch = Patch()
-    for i, src in enumerate(unique_sources):
-        src_mask = df['source'] == src
-        patch["data"][i]["marker"]["opacity"] = mask[src_mask]
+    if clicked_idx is not None and (manual_query == df.iloc[clicked_idx][in_key]):
+        mask[clicked_idx] = 1.0
+        patch["data"][0]["marker"]["color"] = ['red' if i == clicked_idx else 'blue' for i in range(len(df))]
 
-        src_mask = df['source'] == src
+    patch["data"][0]["marker"]["opacity"] = mask
 
-        df["data_in"] = df[in_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-        df["data_out"] = df[out_key].map(lambda x: x if len(x) < char_amt else x[:char_amt] + "...")
-        customdata = np.stack((
-            df.loc[src_mask, "data_in"],
-            df.loc[src_mask, "data_out"],
-            df.loc[src_mask, "source"]
-        ), axis=-1)
-        patch["data"][i]["customdata"] = customdata
-    return patch
+    cutoff_fun = cutoffl(char_amt)
+    df["data_in"] = df[in_key].map(cutoff_fun)
+    df["data_out"] = df[out_key].map(cutoff_fun)
+    customdata = np.stack((df["data_in"], df["data_out"]), axis=-1)
+    patch["data"][0]["customdata"] = customdata
+
+    topk_items = []
+    for rank, idx in enumerate(top_n):
+        topk_items.append(html.Div(
+            id={"type": "topk-item", "index": int(idx)},
+            children=[
+                html.B(f"Rank: {rank + 1}"), html.Br(),
+                html.B("Input: "), cutoff_fun(df.iloc[idx][in_key]), html.Br(),
+                html.B("Output: "), cutoff_fun(df.iloc[idx][out_key]), html.Hr()
+            ],
+            style={"padding": "6px", "cursor": "pointer"}
+        ))
+    return patch, topk_items
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)

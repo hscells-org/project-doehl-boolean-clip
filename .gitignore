@@ -178,3 +178,5 @@ cython_debug/
 /tar
 /wandb
 /models
+/cache
+/plots

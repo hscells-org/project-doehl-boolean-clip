@@ -5,7 +5,8 @@ from itertools import chain
 from tqdm import tqdm
 from Bio import Entrez
 from transformers import AutoTokenizer
-from deduplication import remove_similar_jaccard
+
+from utils.deduplication import remove_similar_jaccard
 
 Entrez.email = "simon.doehl@student.uni-tuebingen.de"
 
@@ -40,6 +41,7 @@ class PubmedQueries:
                     self.bool_key: x["query"],
                     "source": source,
                     "quality": quality,
+                    'mission_hash': x["mission_hash"],
                 }
         items = [a for a in chain(
             process_logs("./data/2022-searchrefiner.log.jsonl"),
@@ -128,19 +130,25 @@ class PubmedQueries:
             json.dump(cache, cf, indent=2)
 
         # Fetch summaries for all found PMIDs
+        bs = 1000
         pmids = [r['pmid'] for r in results]
         if pmids:
-            handle = Entrez.esummary(db="pubmed", id=','.join(pmids))
-            summaries = list(Entrez.parse(handle))
-            handle.close()
+            for i in range(0, len(pmids), bs):
+                try:
+                    handle = Entrez.esummary(db="pubmed", id=','.join(pmids[i:i+bs]))
+                    summaries = list(Entrez.parse(handle))
+                    handle.close()
+                except Exception as e:
+                    print(f"Error searching batch '{i} - {i+bs}': {e}")
+                    continue
 
-            # Merge summaries into results
-            pmid_to_summary = {rec['Id']: rec for rec in summaries}
-            for r in results:
-                summary = pmid_to_summary.get(r['pmid'], {})
-                r['nl_query'] = summary.get('Title', '')
-                r['source'] = 'pubmed-query'
-                r['quality'] = self.default_w
+                # Merge summaries into results
+                pmid_to_summary = {rec['Id']: rec for rec in summaries}
+                for r in results[i:i+bs]:
+                    summary = pmid_to_summary.get(r['pmid'], {})
+                    r['nl_query'] = summary.get('Title', '')
+                    r['source'] = 'pubmed-query'
+                    r['quality'] = self.default_w
 
         # Save to JSONL
         with open("data/pubmed-queries.jsonl", 'w') as f:

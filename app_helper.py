@@ -1,4 +1,46 @@
 from dash import html, dcc
+import os
+import hashlib
+import pickle
+import pandas as pd
+import torch
+
+DEFAULT_CHAR_AMT = 50
+
+def get_cache_path(model_name: str, paths: list[str], model_path, amount):
+    h = hashlib.sha256()
+    h.update(model_name.encode("utf-8"))
+    h.update(str(model_path).encode("utf-8"))
+    h.update(str(amount).encode("utf-8"))
+    for p in paths:
+        h.update(str(os.path.getmtime(p)).encode("utf-8"))
+        h.update(str(os.path.getsize(p)).encode("utf-8"))
+    return os.path.join("cache", f"embeddings_{h.hexdigest()[:16]}.pkl")
+
+def load_or_create_embeddings(model, data_paths, in_key, out_key, model_path=None, data_amount=None, batch_size=100):
+    dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
+    df = dataset[dataset[in_key] != ""]
+    df = df[df["mission_hash"].isna() | ~df["mission_hash"].duplicated(keep='last')]
+    if data_amount is not None:
+        df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
+
+    os.makedirs("cache", exist_ok=True)
+    cache_file = get_cache_path(model.model_name, data_paths, model_path, data_amount)
+
+    if os.path.exists(cache_file):
+        print(f"Loading cached embeddings from {cache_file}")
+        with open(cache_file, "rb") as f:
+            embeddings = pickle.load(f)
+    else:
+        print("Computing embeddings...")
+
+        embeddings = model.encode_bool(df[out_key].tolist(), batch_size=batch_size, verbose=True).detach().cpu().numpy()
+        torch.cuda.empty_cache()
+
+        with open(cache_file, "wb") as f:
+            pickle.dump(embeddings, f)
+
+    return df, embeddings
 
 header = html.H1(
     "Embedding Visualization",
@@ -55,7 +97,7 @@ settings_controls = html.Div(
             html.Label("Dropoff strength", style={'fontWeight': 'bold'}),
             dcc.Slider(
                 id='dropoff-strength',
-                min=0, max=2, step=0.01, value=0.5,
+                min=0, max=2, step=0.01, value=0.0,
                 marks={0: '0', 0.5: '0.5', 1: '1', 2: '2'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )
@@ -63,7 +105,7 @@ settings_controls = html.Div(
         html.Div([
             html.Label("Hover char amt.", style={'fontWeight': 'bold'}),
             dcc.Slider(
-                id='char-amt', min=0, max=200, step=1, value=50,
+                id='char-amt', min=0, max=200, step=1, value=DEFAULT_CHAR_AMT,
                 marks={0: '0', 100: '100', 200: '200'},
                 tooltip={"placement": "bottom", "always_visible": False}
             )
@@ -77,8 +119,22 @@ graph_section = dcc.Graph(
            'borderRadius': '8px', 'padding': '5px', 'backgroundColor': '#fafafa'}
 )
 
+topk_section = html.Div(
+    id="topk-list",
+    style={
+        "maxHeight": "300px",
+        "overflowY": "auto",
+        "marginTop": "20px",
+        "textAlign": "left",
+        "border": "1px solid #ddd",
+        "borderRadius": "8px",
+        "padding": "10px",
+        "backgroundColor": "#fff"
+    }
+)
+
 layout = html.Div(
     style={'maxWidth': '1100px', 'margin': '0 auto', 'padding': '20px',
            'fontFamily': 'Arial, sans-serif', 'textAlign': 'center'},
-    children=[header, query_controls, settings_controls, graph_section]
+    children=[header, query_controls, settings_controls, graph_section, topk_section]
 )

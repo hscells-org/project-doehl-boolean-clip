@@ -6,14 +6,16 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-from deduplication import remove_similar_jaccard, similar_factor
+from utils.deduplication import remove_similar_jaccard, similar_factor
 
 def paths_to_dataset(paths: str|list[str],
                      split_perc: float = 0.1,
                      test_only_sources: list = [],
                      train_sources = [],
                      train_batch = 2,
-                     eval_batch = 30):
+                     eval_batch = 30,
+                     test_only = False,
+                     quality_power = 1):
     def ensure_list(v): return [v] if isinstance(v, str) else v
     paths = ensure_list(paths)
 
@@ -24,17 +26,17 @@ def paths_to_dataset(paths: str|list[str],
         for source, data in df.groupby("source"):
             if source not in test_only_sources:
                 train_part, test_part = train_test_split(data, test_size=split_perc, random_state=42)
-                train_part['quality'] = train_part['quality'] / train_part.shape[0]
+                train_part['quality'] = (train_part['quality'] ** quality_power) / train_part.shape[0]
                 if source in train_sources: train_dfs.append(train_part)
                 test_dfs.append((source, test_part))
             else:
                 test_dfs.append((source, data))
 
-    train_df = pd.concat(train_dfs).reset_index(drop=True)
-    train_df['quality'] = train_df['quality'] * (1 / np.mean(train_df['quality']))
-    # pad with values from the start to make fill batches
-    excess = train_df.shape[0] % train_batch
-    if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
+    if train_dfs:
+        train_df = pd.concat(train_dfs).reset_index(drop=True)
+        # pad with values from the start to make fill batches
+        excess = train_df.shape[0] % train_batch
+        if excess > 0: train_df = pd.concat([train_df, train_df.iloc[np.arange(train_batch - excess)]])
 
     for i, (source, df) in tqdm(enumerate(test_dfs), "Removing similar", len(test_dfs)):
         col = 'bool_query'
@@ -49,13 +51,16 @@ def paths_to_dataset(paths: str|list[str],
             df = pd.concat([df, df.iloc[np.arange(eval_batch - excess)]])
         test_dfs[i] = (source, df)
 
-    # scale for similar data
-    train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
-    train_dataset = Dataset.from_pandas(train_df)
+    if not test_only and train_dfs:
+        # scale for similar data
+        train_df['quality'] = train_df['quality'] * similar_factor(train_df['bool_query'])
+        # normalize
+        train_df['quality'] = train_df['quality'] / np.max(train_df['quality'])
+        train_dataset = Dataset.from_pandas(train_df)
     test_datasets = {group: Dataset.from_pandas(df) for group, df in test_dfs}
 
     dataset_dict = DatasetDict({
-        "train": train_dataset,
+        "train": train_dataset if not test_only else [],
         "test": test_datasets
     })
     return dataset_dict
