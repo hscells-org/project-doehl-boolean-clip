@@ -191,24 +191,17 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         if len(queries) < 2: continue
         topic = group["topic"].iloc[0]
 
-        tensors = [
-            model(query, topic, False)["logits"]
-                .cpu().detach()
-            for query in queries
-        ]
-        # print(tensors)
-        # concatenate them along the batch dimension
-        tensor = torch.cat(tensors).squeeze()
+        logits = model(queries, topic, False)["logits"].cpu().detach()
 
         # Original ranks (0-based indices)
-        original_ranks = torch.arange(len(tensor))
+        original_ranks = torch.arange(len(logits))
 
         # Sorted values → get the sorted indices → assign new ranks
-        sorted_indices = torch.argsort(tensor)
-        new_ranks = torch.arange(len(tensor))[sorted_indices]
+        sorted_indices = torch.argsort(logits)
+        new_ranks = torch.arange(len(logits))[sorted_indices]
 
         spearman_corr, _ = spearmanr(original_ranks.numpy(), new_ranks.numpy())
-        pearson_corr, _ = pearsonr(group["f3"].values, tensor.detach().numpy())
+        pearson_corr, _ = pearsonr(group["f3"].values, logits.detach().numpy())
         offset_sum = (original_ranks-new_ranks.float()).abs().sum()
         n = original_ranks.size()[0]
         norm_offset = ((offset_sum)*2/(n**2-n%2)).numpy()
@@ -218,7 +211,7 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         res[name]["norm_offset"].append(norm_offset)
         res[name]["query_amt"].append(n)
         res[name]["f3_variance"].append(np.sqrt(np.var(group['f3'].values)))
-        res[name]["best_rank"].append(new_ranks[-1] / len(tensor))
+        res[name]["best_rank"].append(new_ranks[-1] / len(logits))
 
     df = pd.DataFrame({
         main_name: list(res.keys()),
@@ -227,7 +220,7 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         # "norm_offset_sum": [np.mean(m["norm_offset"]) for m in res.values()],
         # "med_queries_per_prompt": [np.median(m["query_amt"]) for m in res.values()],
         "f3_variance": [np.mean(m["f3_variance"]) for m in res.values()],
-        "best_rank": [np.mean(m["best_rank"]) for m in res.values()],
+        # "best_rank": [np.mean(m["best_rank"]) for m in res.values()],
         # "avg_queries_per_prompt": [np.mean(m["query_amt"]) for m in res.values()],
     })
 
@@ -240,20 +233,11 @@ def evaluate_on_generated(model, group_keys: list[str] = ["id", "model"]):
         "pearson": float,
         # "avg_queries_per_prompt": float,
         "f3_variance": float,
-        "best_rank": float,
+        # "best_rank": float,
     })
 
-    # def highlight_last_row(row):
-    #     return ['font-weight: bold;' if row.name == len(df) - 1 else '' for _ in row]
-    # fmt = {
-    #     "spearman":            "{:.3f}",
-    #     # "norm_offset_sum":     "{:.3f}",
-    #     "avg_queries_per_prompt": "{:.3f}",
-    #     # "med_queries_per_prompt": "{}",
-    #     "f3_variance": "{:.1e}",
-    # }
-    # styled = df.style.apply(highlight_last_row, axis=1).format(fmt)
-    # display(HTML(styled.to_html()))
     df = df.round(4)
     display(df)
 
+    latex_str = df.to_latex(index=False, escape=False, column_format="lcccc")
+    print(latex_str)

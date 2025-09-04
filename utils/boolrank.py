@@ -43,7 +43,7 @@ class DualEncoderModel(nn.Module):
         return {"loss": loss, "logits": logits}
 
     def get_similarities(self, a, b):
-        return torch.matmul(a, torch.transpose(b, 0, 1))
+        return a @ b
 
     def encode(self, inputs, encoder, batch_size=1, eval_mode=True, verbose=False):
         single = False
