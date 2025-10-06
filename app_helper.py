@@ -17,10 +17,12 @@ def get_cache_path(model_name: str, paths: list[str], model_path, amount):
         h.update(str(os.path.getsize(p)).encode("utf-8"))
     return os.path.join("cache", f"embeddings_{h.hexdigest()[:16]}.pkl")
 
+
 def load_or_create_embeddings(model, data_paths, in_key, out_key, model_path=None, data_amount=None, batch_size=100):
     dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
     df = dataset[dataset[in_key] != ""]
-    df = df[df["mission_hash"].isna() | ~df["mission_hash"].duplicated(keep='last')]
+    if "mission_hash" in df.columns:
+        df = df[df["mission_hash"].isna() | ~df["mission_hash"].duplicated(keep='last')]
     if data_amount is not None:
         df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
 
