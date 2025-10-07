@@ -1,7 +1,9 @@
 # Joint Representations of Natural Language and Complex Queries
 
 ## Quickstart
-To start a local server for hosting the embedding visualization website run `python app.py`.
+To start a local server for hosting the embedding visualization website run `python app.py`
+
+To only calculate the embeddings and cache them use `python app.py --precalculate`
 
 ## Overview
 This repository consists of a CLIP inspired model, which is used to compare Natural Language Queries with Boolean Language Queries. It also contains helper functions for preprocessing data from different sources, and training/evaluating different models.

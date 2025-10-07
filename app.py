@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import numpy as np
 import torch
 import umap
+import argparse
 
 import utils.app_helper as app_helper
 from utils.boolrank import DualEncoderModel
@@ -28,13 +29,18 @@ model_path = None
 # model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
 # model_path = r"models\\clip\\bge-small-en-v1.5\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
 
-model = DualEncoderModel(model_name)
-if model_path: model.load(model_path)
 # -------------------------------------------
 
-# can be run separately for caching
-df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N)
-torch.cuda.empty_cache()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--precalculate', action='store_true', help='Only calculate and cache embeddings')
+    args, _ = parser.parse_known_args()
+
+    model = DualEncoderModel(model_name)
+    if model_path: model.load(model_path)
+    df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N)
+    torch.cuda.empty_cache()
+    if args.precalculate: quit()
 
 print("Calculating UMAP")
 um_reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=0)
