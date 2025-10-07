@@ -1,0 +1,1 @@
+{"rule":"UPPERCASE_SENTENCE_START","sentence":"^\\Qapp.py\nBy running this file a local server which hosts a website showing embeddings of given data in a 2D plot\\E$"}
