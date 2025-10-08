@@ -11,6 +11,8 @@ This repository consists of a CLIP inspired model, which is used to compare Natu
 ### app.py
 By running this file a local server which hosts a website showing embeddings of given data in a 2D plot
 
+By adjusting variables in the beginning of this file the input data and used model can be modified.
+
 ### eval.ipynb
 This notebook contains examples for evaluating models with our evaluation functions
 
