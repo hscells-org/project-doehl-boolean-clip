@@ -15,6 +15,8 @@ in_key = "nl_query"
 out_key = "bool_query"
 N = 10000
 data_folder = "query_data/"
+# sources = ["pubmed-searchrefiner"]
+sources = None
 
 paths = [
     data_folder + "training.jsonl",
@@ -22,10 +24,10 @@ paths = [
     data_folder + "sysrev_conv.jsonl",
 ]
 
-model_name = 'BAAI/bge-small-en-v1.5'
-# model_name = 'dmis-lab/biobert-v1.1'
+# model_name = 'BAAI/bge-small-en-v1.5'
+model_name = 'dmis-lab/biobert-v1.1'
 model_path = None
-# model_path = r"models\\clip\\biobert-v1.1\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
+model_path = r"models\\clip\\biobert-v1.1\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
 # model_path = r"models\\clip\\bge-small-en-v1.5\\b16_lr1E-05_(pubmed-que_pubmed-sea_raw-jsonl)^4\\checkpoint-11288\\model.safetensors"
 # model_path = r"models\\clip\\bge-small-en-v1.5\\b4_lr8E-06_(pubmed-que_pubmed-sea_raw-jsonl)^2no[]\\model.safetensors"
 
@@ -38,7 +40,8 @@ if __name__ == "__main__":
 
     model = DualEncoderModel(model_name)
     if model_path: model.load(model_path)
-    df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N)
+
+    df, embeddings = app_helper.load_or_create_embeddings(model, paths, in_key, out_key, model_path, N, sources=sources)
     torch.cuda.empty_cache()
     if args.precalculate: quit()
 
@@ -188,7 +191,7 @@ def update_figure(manual_query, dropdown_query, topk, nonmatch_opacity, default_
             children=[
                 html.B(f"Rank: {rank + 1}"), html.Br(),
                 html.B("Input: "), cutoff_fun(df.iloc[idx][in_key]), html.Br(),
-                html.B("Output: "), cutoff_fun(df.iloc[idx][out_key]), html.Hr()
+                html.B("Output: "), df.iloc[idx][out_key], html.Hr()
             ],
             style={"padding": "6px", "cursor": "pointer"}
         ))

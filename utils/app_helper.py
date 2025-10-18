@@ -7,27 +7,33 @@ import torch
 
 DEFAULT_CHAR_AMT = 50
 
-def get_cache_path(model_name: str, paths: list[str], model_path, amount):
+def get_cache_path(model_name: str, dataframe: pd.DataFrame, model_path: str):
     h = hashlib.sha256()
     h.update(model_name.encode("utf-8"))
     h.update(str(model_path).encode("utf-8"))
-    h.update(str(amount).encode("utf-8"))
-    for p in paths:
-        h.update(str(os.path.getmtime(p)).encode("utf-8"))
-        h.update(str(os.path.getsize(p)).encode("utf-8"))
+    h.update(str(dataframe.size).encode("utf-8"))
     return os.path.join("cache", f"embeddings_{h.hexdigest()[:16]}.pkl")
 
 
-def load_or_create_embeddings(model, data_paths, in_key, out_key, model_path=None, data_amount=None, batch_size=100):
+def load_or_create_embeddings(model: str,
+                              data_paths: list[str],
+                              in_key: str,
+                              out_key: str,
+                              model_path: str = None,
+                              data_amount: int = None,
+                              batch_size: int = 100,
+                              sources: list[str] = None):
+
     dataset = pd.concat([pd.read_json(p, lines=True) for p in data_paths])
     df = dataset[dataset[in_key] != ""]
+    if sources: df = df[df["source"].isin(sources)]
     if "mission_hash" in df.columns:
         df = df[df["mission_hash"].isna() | ~df["mission_hash"].duplicated(keep='last')]
     if data_amount is not None:
         df = df.sample(min(data_amount, df.shape[0]), random_state=0).reset_index(drop=True)
 
     os.makedirs("cache", exist_ok=True)
-    cache_file = get_cache_path(model.model_name, data_paths, model_path, data_amount)
+    cache_file = get_cache_path(model.model_name, df, model_path)
 
     if os.path.exists(cache_file):
         print(f"Loading cached embeddings from {cache_file}")
@@ -35,7 +41,6 @@ def load_or_create_embeddings(model, data_paths, in_key, out_key, model_path=Non
             embeddings = pickle.load(f)
     else:
         print("Computing embeddings...")
-
         embeddings = model.encode_bool(df[out_key].tolist(), batch_size=batch_size, verbose=True).detach().cpu().numpy()
         torch.cuda.empty_cache()
 
@@ -43,6 +48,7 @@ def load_or_create_embeddings(model, data_paths, in_key, out_key, model_path=Non
             pickle.dump(embeddings, f)
 
     return df, embeddings
+
 
 header = html.H1(
     "Embedding Visualization",
